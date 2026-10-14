@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pool IQ 盐氯机",
+        "description": "连接 Pool IQ 云平台并轮询您的盐氯机。设备 ID 是控制器的 12 位编号（例如 0070XXXXXXXX），可在 Pool IQ 应用中查看。请输入 Pool IQ Hub 提供的用户名和密码。后端服务器地址请保持不变。",
+        "data": {
+          "device_id": "设备 ID",
+          "host": "后端服务器地址",
+          "username": "用户名",
+          "password": "密码"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到 Pool IQ 后端服务器。",
+      "invalid_auth": "登录被拒绝，请检查用户名和密码。",
+      "unknown": "发生意外错误，请查看 Home Assistant 日志。"
+    },
+    "abort": {
+      "already_configured": "该设备已设置。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pool IQ 选项",
+        "description": "轮询间隔，以及是否在 Home Assistant 侧边栏中显示 Pool IQ 控制面板。",
+        "data": {
+          "scan_interval": "轮询间隔（秒）",
+          "show_panel": "在侧边栏中显示 Pool IQ"
+        }
+      }
+    }
+  }
+}

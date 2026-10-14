@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pool IQ chlorinator",
+        "description": "Connects to the Pool IQ cloud and polls your salt chlorinator. The device ID is the controller's 12-character ID (such as 0070XXXXXXXX), shown in the Pool IQ app. Enter the username and password supplied by Pool IQ Hub. Leave the backend host as it is.",
+        "data": {
+          "device_id": "Device ID",
+          "host": "Backend host",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the Pool IQ backend.",
+      "invalid_auth": "Login was rejected. Check the username and password.",
+      "unknown": "Unexpected error. Check the Home Assistant log."
+    },
+    "abort": {
+      "already_configured": "This device is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pool IQ options",
+        "data": {
+          "scan_interval": "Polling interval (seconds)",
+          "show_panel": "Show Pool IQ in the sidebar"
+        },
+        "description": "Polling interval and whether the Pool IQ control panel appears in the Home Assistant sidebar."
+      }
+    }
+  }
+}

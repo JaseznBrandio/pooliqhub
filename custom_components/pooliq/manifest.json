@@ -1,0 +1,20 @@
+{
+  "domain": "pooliq",
+  "name": "Pool IQ Hub",
+  "codeowners": [
+    "@JaseznBrandio"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
+  "documentation": "https://github.com/JaseznBrandio/pooliqhub",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/JaseznBrandio/pooliqhub/issues",
+  "requirements": [],
+  "version": "0.4.0"
+}
