@@ -75,6 +75,13 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.ph_amount: int = DEFAULT_PH_AMOUNT
         self._salt_test: dict[str, Any] | None = None
         self.push_connected = False
+        # When the running boost ends (epoch seconds), learned from the unit's
+        # boost screen ("Hour=8&Minute=0&Second=0") and kept across restarts.
+        self.boost_ends: float | None = None
+        self._boost_asked = 0.0
+        self._state_store: Store = Store(
+            hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}.state"
+        )
         self._salt_checked = 0.0
         self._was_testing = False
         # Socket state is only visible when the hub reports a change, so the
@@ -96,6 +103,65 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for sock, fields in stored.items():
                 if isinstance(fields, dict):
                     self._sockets[sock] = {"ts": 0, "fields": fields}
+
+    async def async_load_state(self) -> None:
+        stored = await self._state_store.async_load()
+        if isinstance(stored, dict) and isinstance(stored.get("boost_ends"), (int, float)):
+            self.boost_ends = float(stored["boost_ends"])
+
+    @callback
+    def _save_state(self) -> None:
+        self._state_store.async_delay_save(lambda: {"boost_ends": self.boost_ends}, 2)
+
+    @callback
+    def set_boost(self, ends: float | None) -> None:
+        if ends != self.boost_ends:
+            self.boost_ends = ends
+            self._save_state()
+
+    @callback
+    def boost_from_param(self, param: Any) -> bool:
+        """Set the boost end time from the boost screen's "Hour=..&Minute=..&Second=.."."""
+        if not isinstance(param, str) or "Hour=" not in param:
+            return False
+        fields = dict(parse_qsl(param))
+        try:
+            secs = int(fields.get("Hour", 0)) * 3600 + int(fields.get("Minute", 0)) * 60 + int(
+                fields.get("Second", 0))
+        except ValueError:
+            return False
+        self.set_boost(time.time() + secs if secs > 0 else None)
+        return True
+
+    def _inject_boost(self, props: dict[str, Any]) -> dict[str, Any]:
+        spec = str((props.get("SpecMode") or {}).get("value", ""))
+        if spec and spec != "2" and self.boost_ends is not None:
+            self.set_boost(None)  # boost finished or was stopped
+        if self.boost_ends is not None and self.boost_ends < time.time():
+            self.set_boost(None)
+        props = dict(props)
+        if self.boost_ends is not None:
+            props["BoostEndsAt"] = {"property": "BoostEndsAt", "value": self.boost_ends}
+        else:
+            props.pop("BoostEndsAt", None)
+        return props
+
+    async def _ask_boost_remaining(self, props: dict[str, Any]) -> None:
+        """Boost running but end time unknown (e.g. after a restart): ask the boost screen."""
+        if str((props.get("SpecMode") or {}).get("value", "")) != "2" or self.boost_ends:
+            return
+        if time.monotonic() - self._boost_asked < 600:
+            return
+        self._boost_asked = time.monotonic()
+        try:
+            reply = await self.client.async_invoke(
+                "optionRequest", {"menu": "M4", "button": "NULL", "param": "NULL"})
+        except PoolIQError as err:
+            _LOGGER.debug("Boost screen read failed: %s", err)
+            return
+        for item in reply if isinstance(reply, list) else [reply]:
+            if isinstance(item, dict) and self.boost_from_param(item.get("param")):
+                return
 
     @callback
     def _save_cache(self) -> None:
@@ -152,8 +218,22 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }}
 
         props = self._apply_pending(props)
+        if chlorinator:
+            await self._ask_boost_remaining(props)
+            props = self._inject_boost(props)
         self._pick_interval(props)
         return {"properties": props, "sockets": dict(self._sockets)}
+
+    @callback
+    def hold(self, key: str, value: Any) -> None:
+        """Show a value straight away and keep it until the unit reports something newer."""
+        self._pending[key] = (value, int(time.time() * 1000), time.monotonic() + PENDING_HOLD)
+        if self.data is not None:
+            props = self._apply_pending(dict(self.data.get("properties") or {}))
+            if "OutputSetPoint" in props:
+                props = self._inject_boost(props)
+            self.data = {**self.data, "properties": props}
+            self.async_update_listeners()
 
     def forget_pending(self, *keys: str) -> None:
         """Stop holding values that a new change makes out of date."""
@@ -356,7 +436,14 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     updates[key] = value
         elif kind == "EVENT" and payload.get("event") == "menuStatus":
             data = payload.get("data") or {}
-            if data.get("menu") == "M10" and isinstance(data.get("param"), str):
+            if data.get("menu") == "M4":
+                # Boost screen: step 1 carries the time left, step 0 means stopped.
+                if data.get("step") == 1:
+                    self.boost_from_param(data.get("param"))
+                elif data.get("step") == 0:
+                    self.set_boost(None)
+                updates["SpecMode"] = 2 if self.boost_ends else 0
+            elif data.get("menu") == "M10" and isinstance(data.get("param"), str):
                 fields = dict(parse_qsl(data["param"]))
                 try:
                     value = int(fields.get("TDS", "0"))
@@ -377,6 +464,8 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 item.pop("numberValue", None)
             props[key] = item
         props = self._apply_pending(props)
+        if "OutputSetPoint" in props:
+            props = self._inject_boost(props)
         if sockets_changed:
             self._save_cache()
         self._pick_interval(props)

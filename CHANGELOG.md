@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.6
+
+- **Chlorinator page redesigned.** Controls first: Power, Mode, Output and Boost on the left; readings on the right as small outlined cards (Salt Reading, water temperature, actual output, cell, pump, power pack, status). Stacks on a phone, controls on top.
+- **Salt Reading card** shows "- - ppm" until a test has run, with a **Test Salt Level** button in the card.
+- **Chlorine boost timer.** Set the boost duration before starting; while boost runs, a live countdown replaces it and the duration is locked until boost is stopped. Works for boosts started from the Pool IQ app too, and survives a Home Assistant restart. New **Boost ends** sensor.
+- **pH dosing:** pH2 is now **Prime / Demand amount**, with its **Start Prime / Demand Dosing** button directly under it.
+- **Faults** is now labelled **Status** on every device.
+
 ## 0.4.5
 
 - **Salt** on the Pool IQ page is the salt test result, the same figure as the app. It never shows the unit's live reading; before a test it shows "Not tested". A **Run test** button sits right next to it.

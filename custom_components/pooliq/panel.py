@@ -35,6 +35,8 @@ READING_KEYS = {
     # chlorinator
     "SpecMode": "special",
     "power_pack_temp": "power_pack",
+    "boost_ends": "boost_ends",
+    "boost_hours": "boost_hours",
     "fault_status": "fault_text",
     "SaltTestResult": "salt_test_result",
     "PowerMode_ctl": "mode",

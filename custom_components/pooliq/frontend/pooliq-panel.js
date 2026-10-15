@@ -63,11 +63,19 @@ class PoolIQPanel extends HTMLElement {
       /* non-admin users may not be allowed to subscribe; polling below covers it */
     }
     this._timer = setInterval(() => this._load(), 60000);
+    // Boost countdown ticks every second without a full re-render.
+    this._tick = setInterval(() => {
+      for (const el of this.shadowRoot.querySelectorAll("[data-ends]")) {
+        el.textContent = fmtLeft(Number(el.dataset.ends) - Date.now());
+      }
+    }, 1000);
   }
 
   disconnectedCallback() {
     if (this._unsub) this._unsub();
     if (this._timer) clearInterval(this._timer);
+    if (this._tick) clearInterval(this._tick);
+    this._tick = null;
     this._unsub = null;
     this._timer = null;
     this._hass = null;
@@ -255,6 +263,7 @@ class PoolIQPanel extends HTMLElement {
 
   _renderDevice(d) {
     const r = d.readings;
+    if (r.mode) return this._renderChlorDevice(d);
     // Pool probe (B) first when labelled; skip probes the device doesn't report.
     const temps = [r.temp_b, r.temp_a].filter((eid) => eid && this._value(eid));
     const stale = !d.last_update_success;
@@ -289,34 +298,16 @@ class PoolIQPanel extends HTMLElement {
         </button>`;
     };
 
-    // Salt test runs from a button right next to the salt reading.
-    const withTest = (html) => html && r.salt_test
-      ? `<div class="stat-with-act">${html}
-          <button class="act small ${this._busy.has(r.salt_test) ? "busy" : ""}" data-action="press"
-            data-entity="${esc(r.salt_test)}"><ha-icon icon="mdi:shaker-outline"></ha-icon><span>Run test</span></button>
-        </div>`
-      : html;
-
     const stats = [
-      // The salt test result is the figure the unit and app show; the live reading
-      // is only a fallback until the first test result arrives.
-      // Salt is the salt test result only (the figure the unit and app show).
-      r.salt_test_result
-        ? withTest(this._value(r.salt_test_result)
-            ? stat(r.salt_test_result, "Salt", "mdi:shaker-outline")
-            : `<button class="stat untested" data-action="more-info" data-entity="${esc(r.salt_test_result)}">
-                 <ha-icon icon="mdi:shaker-outline"></ha-icon>
-                 <div><div class="stat-label">Salt</div><div class="stat-value">Not tested</div></div>
-               </button>`)
-        : stat(r.salt, "Salt", "mdi:shaker-outline"),
+      stat(r.salt, "Salt", "mdi:shaker-outline"),
       stat(r.output, "Chlorinator output", "mdi:water-percent"),
       stat(r.cell, "Cell", "mdi:flash-outline"),
       stat(r.pump, "Chlorinator pump", "mdi:pump"),
       stat(r.power_pack, "Power pack", "mdi:thermometer"),
       stat(r.work_mode, "Work mode", "mdi:cog-outline"),
       r.fault_text
-        ? stat(r.fault_text, "Faults", "mdi:alert-circle-outline")
-        : stat(r.fault, "Faults", "mdi:alert-circle-outline"),
+        ? stat(r.fault_text, "Status", "mdi:alert-circle-outline")
+        : stat(r.fault, "Status", "mdi:alert-circle-outline"),
     ].join("");
 
     const sockets = d.sockets.length
@@ -348,43 +339,143 @@ class PoolIQPanel extends HTMLElement {
       </section>`;
   }
 
-  _renderChlorinator(r) {
+  _deviceHead(d) {
+    const dev = d.device_id && this._hass.devices && this._hass.devices[d.device_id];
+    const title = (dev && (dev.name_by_user || dev.name)) || d.title;
+    const devLink = d.device_id
+      ? `<a class="link" href="/config/devices/device/${esc(d.device_id)}">Device page</a>` : "";
+    return `
+      <div class="device-head">
+        <div>
+          <h1>${esc(title)}</h1>
+          <div class="sub">${d.sw_version ? `Firmware ${esc(d.sw_version)} · ` : ""}${
+            !d.last_update_success ? `<span class="bad">Cloud not reachable, showing last known values</span>` : "Connected"
+          }</div>
+        </div>
+        ${devLink}
+      </div>`;
+  }
+
+  _renderChlorDevice(d) {
+    const r = d.readings;
     const val = (eid) => this._value(eid);
-    const mode = val(r.mode);
-    const special = val(r.special);
-    const cell = val(r.cell);
-    const out = this._fmtNumber(r.output);
-    const set = val(r.setpoint);
-    const work = val(r.work_mode_ctl);
     const busy = (eid) => (eid && this._busy.has(eid)) ? "busy" : "";
+    const special = val(r.special);
     const specialText = special ? special.state : "Normal";
     const boosting = specialText === "Boost";
+    const testing = specialText === "Salt test";
+    const set = val(r.setpoint);
 
-    let status = mode ? `Mode ${mode.state}` : "";
-    if (specialText !== "Normal") status = specialText;
-    else if (cell) status += ` · cell ${cell.state.toLowerCase()}`;
-
+    // ---- controls (left)
     const segment = (eid, label, options) => eid
       ? `<div class="seg-row"><span class="stat-label">${esc(label)}</span>
           <div class="seg ${busy(eid)}" role="group" aria-label="${esc(label)}">${options.map(
           (m) => `<button class="${val(eid) && val(eid).state === m ? "sel" : ""}" data-action="mode"
                    data-entity="${esc(eid)}" data-option="${m}">${m}</button>`).join("")}</div></div>`
       : "";
-
     const appliesTo = set && set.attributes.applies_to;
     const outLabel = appliesTo && appliesTo !== "Normal" ? `${appliesTo} output` : "Output";
+    const output = r.setpoint ? `<div class="setpoint ${busy(r.setpoint)}">
+        <span class="stat-label">${esc(outLabel)}</span>
+        <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="-5" aria-label="Lower output">−</button>
+        <span class="set-val">${esc(set ? Math.round(Number(set.state)) : "–")}%</span>
+        <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="5" aria-label="Raise output">+</button>
+      </div>` : "";
 
-    const action = (eid, label, icon) => eid
-      ? `<button class="act ${busy(eid)}" data-action="press" data-entity="${esc(eid)}">
+    const action = (eid, label, icon, cls = "") => eid
+      ? `<button class="act ${cls} ${busy(eid)}" data-action="press" data-entity="${esc(eid)}">
            <ha-icon icon="${icon}"></ha-icon><span>${esc(label)}</span></button>` : "";
 
+    const ends = val(r.boost_ends);
+    const endsMs = ends ? Date.parse(ends.state) : NaN;
+    const hours = val(r.boost_hours);
+    const boost = boosting
+      ? `<div class="boost on">
+          <div class="boost-info">
+            <span class="stat-label">Chlorine boost</span>
+            <span class="countdown" ${Number.isFinite(endsMs) ? `data-ends="${endsMs}"` : ""}>${
+              Number.isFinite(endsMs) ? esc(fmtLeft(endsMs - Date.now())) : "Running"}</span>
+            <span class="hint-sm">${Number.isFinite(endsMs) ? "remaining" : "time left unknown"}</span>
+          </div>
+          ${action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline", "full")}
+        </div>`
+      : `<div class="boost">
+          ${r.boost_hours ? `<div class="setpoint ${busy(r.boost_hours)}">
+            <span class="stat-label">Boost timer</span>
+            <button class="step" data-action="nudge" data-entity="${esc(r.boost_hours)}" data-delta="-1" aria-label="Shorter boost">−</button>
+            <span class="set-val">${esc(hours ? Math.round(Number(hours.state)) : "–")}<small> h</small></span>
+            <button class="step" data-action="nudge" data-entity="${esc(r.boost_hours)}" data-delta="1" aria-label="Longer boost">+</button>
+          </div>` : ""}
+          ${action(r.boost_start, "Start boost", "mdi:rocket-launch", "full")}
+        </div>`;
+
+    // ---- readings (right): small outlined cards
+    const mc = (eid, label, icon, text, warn) => {
+      if (!eid) return "";
+      const st = val(eid);
+      if (!st && text === undefined) return "";
+      let shown = text;
+      if (shown === undefined) {
+        shown = st.state;
+        if (st.attributes.unit_of_measurement) shown += ` ${st.attributes.unit_of_measurement}`;
+      }
+      return `<button class="mc ${warn ? "warn" : ""}" data-action="more-info" data-entity="${esc(eid)}">
+          <ha-icon icon="${icon}"></ha-icon>
+          <span class="mc-label">${esc(label)}</span>
+          <span class="mc-value">${esc(shown)}</span>
+        </button>`;
+    };
+    const salt = val(r.salt_test_result);
+    const saltCard = r.salt_test_result || r.salt_test ? `
+      <div class="mc salt">
+        <button class="mc-main" data-action="more-info" data-entity="${esc(r.salt_test_result || "")}">
+          <ha-icon icon="mdi:shaker-outline"></ha-icon>
+          <span class="mc-label">Salt Reading</span>
+          <span class="mc-value">${testing ? "Testing…" : salt ? `${esc(salt.state)} ppm` : "- - ppm"}</span>
+        </button>
+        ${action(r.salt_test, "Test Salt Level", "mdi:shaker-outline", "full")}
+      </div>` : "";
+    const temps = [r.temp_b, r.temp_a].filter((eid) => eid && val(eid));
+    const pump = val(r.pump);
+    const fault = val(r.fault_text);
+    const cards = [
+      saltCard,
+      ...temps.map((eid) => mc(eid, this._shortName(eid), "mdi:thermometer-water")),
+      mc(r.output, "Actual output", "mdi:water-percent"),
+      mc(r.cell, "Cell", "mdi:flash-outline", specialText !== "Normal" ? specialText : undefined),
+      mc(r.pump, "Pump", "mdi:pump", pump ? (pump.state === "on" ? "Running" : "Stopped") : undefined),
+      mc(r.power_pack, "Power pack", "mdi:thermometer"),
+      r.fault_text
+        ? mc(r.fault_text, "Status", "mdi:alert-circle-outline", undefined, fault && fault.state !== "OK")
+        : mc(r.fault, "Status", "mdi:alert-circle-outline"),
+    ].join("");
+
+    return `
+      <section class="device">
+        ${this._deviceHead(d)}
+        <div class="card chlor2 ${boosting ? "boosting" : ""}">
+          <div class="ctl-col">
+            ${segment(r.mode, "Power", ["On", "Off", "Auto"])}
+            ${segment(r.work_mode_ctl, "Mode", ["Normal", "Winter", "Spa"])}
+            ${output}
+            ${boost}
+          </div>
+          <div class="mcards">${cards}</div>
+        </div>
+        ${this._renderPh(r)}
+      </section>`;
+  }
+
+  _renderPh(r) {
+    if (!r.ph) return "";
+    const val = (eid) => this._value(eid);
+    const busy = (eid) => (eid && this._busy.has(eid)) ? "busy" : "";
     const phSwitch = this._st(r.ph);
     const phOn = phSwitch && phSwitch.state === "on";
     const dosing = val(r.ph_status) && val(r.ph_status).state === "on";
     const left = val(r.ph_left);
     const leftNum = left ? Number(left.state) : 0;
     const running = Number.isFinite(leftNum) && leftNum > 0;
-    // Compact stepper: value and unit on top, label underneath.
     const mini = (eid, label, unit, delta) => {
       if (!eid) return "";
       const st = val(eid);
@@ -397,50 +488,26 @@ class PoolIQPanel extends HTMLElement {
         <div class="stat-label">${esc(label)}</div>
       </div>`;
     };
-    const phBlock = r.ph
-      ? `<div class="ph">
-          <div class="ph-head">
-            <span class="ph-title"><ha-icon icon="mdi:beaker-outline"></ha-icon> pH dosing
-              <span class="sub">${phOn ? (running ? `dosing · ${esc(left.state)} left` : dosing ? "pump running" : "on") : "off"}</span></span>
-            <button class="toggle ${phOn ? "on" : ""} ${busy(r.ph)}" data-action="switch" data-entity="${esc(r.ph)}"
-              role="switch" aria-checked="${phOn}" aria-label="pH dosing"><span class="pill"><span></span></span></button>
-          </div>
-          ${phOn ? `<div class="ph-body">
-            ${mini(r.ph_runtime, "pH1 run time", "min/day", 1)}
-            ${mini(r.ph_amount, "pH2 prime amount", "ml", 10)}
-            <div class="ph-go">
-              ${running ? action(r.ph_stop, "Stop pH dose", "mdi:stop-circle-outline")
-                        : action(r.ph_start, "Start pH dose", "mdi:play-circle-outline")}
-            </div>
-          </div>` : ""}
-        </div>`
-      : "";
-
+    const go = running
+      ? `<button class="act full ${busy(r.ph_stop)}" data-action="press" data-entity="${esc(r.ph_stop)}">
+           <ha-icon icon="mdi:stop-circle-outline"></ha-icon><span>Stop Prime / Demand Dosing</span></button>`
+      : `<button class="act full ${busy(r.ph_start)}" data-action="press" data-entity="${esc(r.ph_start)}">
+           <ha-icon icon="mdi:play-circle-outline"></ha-icon><span>Start Prime / Demand Dosing</span></button>`;
     return `
-      <h2 class="section">Chlorinator</h2>
-      <div class="card chlor ${boosting ? "boost" : ""}">
-        <div class="chlor-top">
-          <button class="chlor-out" data-action="more-info" data-entity="${esc(r.output || "")}">
-            <div class="stat-label">Actual output</div>
-            <div class="temp-value">${esc(out.num)}<span>${esc(out.unit || "%")}</span></div>
-            <div class="sub">${esc(status)}</div>
-          </button>
-          <div class="chlor-ctl">
-            ${segment(r.mode, "Power", ["On", "Off", "Auto"])}
-            ${segment(r.work_mode_ctl, "Mode", ["Normal", "Winter", "Spa"])}
-            ${r.setpoint ? `<div class="setpoint ${busy(r.setpoint)}">
-              <span class="stat-label">${esc(outLabel)}</span>
-              <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="-5" aria-label="Lower">−</button>
-              <span class="set-val">${esc(set ? Math.round(Number(set.state)) : "–")}%</span>
-              <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="5" aria-label="Raise">+</button>
-            </div>` : ""}
-            <div class="wide">
-              ${boosting ? action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline")
-                         : action(r.boost_start, "Start boost", "mdi:rocket-launch")}
-            </div>
-          </div>
+      <div class="card ph">
+        <div class="ph-head">
+          <span class="ph-title"><ha-icon icon="mdi:beaker-outline"></ha-icon> pH dosing
+            <span class="sub">${phOn ? (running ? `dosing · ${esc(left.state)} left` : dosing ? "pump running" : "on") : "off"}</span></span>
+          <button class="toggle ${phOn ? "on" : ""} ${busy(r.ph)}" data-action="switch" data-entity="${esc(r.ph)}"
+            role="switch" aria-checked="${phOn}" aria-label="pH dosing"><span class="pill"><span></span></span></button>
         </div>
-        ${phBlock}
+        ${phOn ? `<div class="ph-body">
+          ${mini(r.ph_runtime, "pH1 run time", "min/day", 1)}
+          <div class="ph-demand">
+            ${mini(r.ph_amount, "pH2 Prime / Demand amount", "ml", 10)}
+            ${go}
+          </div>
+        </div>` : ""}
       </div>`;
   }
 
@@ -489,6 +556,13 @@ class PoolIQPanel extends HTMLElement {
         </div>
       </div>`;
   }
+}
+
+function fmtLeft(ms) {
+  if (!(ms > 0)) return "0:00:00";
+  const t = Math.floor(ms / 1000);
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
 const STYLES = `
@@ -597,13 +671,39 @@ const STYLES = `
   .tile.on .pill { background: var(--c); }
   .tile.on .pill span { transform: translateX(18px); }
   .seg-row { display: flex; flex-direction: column; gap: 4px; }
-  .ph { border-top: 1px solid var(--divider-color, rgba(127,127,127,.25)); margin-top: 14px; padding-top: 12px; }
+
   .ph-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .ph-title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
   .ph-title .sub { font-weight: 400; opacity: .7; }
   .toggle { display: flex; align-items: center; background: none; border: 0; padding: 4px; cursor: pointer; color: inherit; }
   .toggle.on .pill { background: var(--primary-color, #03a9f4); }
   .toggle.on .pill span { transform: translateX(18px); }
+  .chlor2 { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 1.2fr); gap: 20px; padding: 16px; }
+  .chlor2.boosting { border-color: var(--warning-color, #ff9800); }
+  .ctl-col { display: flex; flex-direction: column; gap: 12px; }
+  .mcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; align-content: start; }
+  .mc { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px;
+    border: var(--pq-border); border-radius: 12px; min-width: 0; }
+  .mc ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); margin-bottom: 2px; }
+  .mc-label { font-size: 12px; color: var(--secondary-text-color); }
+  .mc-value { font-size: 17px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .mc.warn { border-color: var(--error-color, #db4437); }
+  .mc.warn .mc-value { color: var(--error-color, #db4437); }
+  .mc.salt { grid-column: span 2; gap: 8px; }
+  .mc-main { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; }
+  .act.full { width: 100%; justify-content: center; box-sizing: border-box; }
+  .boost { display: flex; flex-direction: column; gap: 10px; padding-top: 12px;
+    border-top: 1px solid var(--divider-color, rgba(127,127,127,.25)); }
+  .boost-info { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .countdown { font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--warning-color, #ff9800); }
+  .hint-sm { font-size: 12px; color: var(--secondary-text-color); }
+  .card.ph { padding: 14px 16px; margin-top: 12px; }
+  .card.ph .ph-body { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 14px 24px; margin-top: 14px; }
+  .card.ph .mini { flex: none; }
+  .ph-demand { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  @media (max-width: 760px) {
+    .chlor2 { grid-template-columns: 1fr; }
+  }
   .ph-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 12px; }
   .mini { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1 1 140px; }
   .mini-row { display: flex; align-items: center; gap: 10px; }
@@ -611,16 +711,11 @@ const STYLES = `
   @media (max-width: 520px) {
     .ph-body { gap: 12px 8px; }
     .mini-row { gap: 6px; }
-    .ph-body .ph-go { flex-basis: 100%; margin-left: 0; }
-    .ph-body .ph-go .act { width: 100%; justify-content: center; box-sizing: border-box; }
+    .card.ph .ph-body { grid-template-columns: 1fr; }
   }
   .mini-val small { font-size: 12px; opacity: .7; font-weight: 400; }
   .step.sm { width: 30px; height: 30px; line-height: 30px; font-size: 18px; }
-  .ph-go { flex: 0 0 auto; margin-left: auto; }
   .wide .act { width: 100%; justify-content: center; box-sizing: border-box; }
-  .stat-with-act { display: flex; align-items: center; gap: 6px; grid-column: span 2; }
-  .stat-with-act .stat { flex: 1; min-width: 0; }
-  .stat.untested .stat-value { opacity: .65; font-style: italic; white-space: nowrap; }
   .act.small { padding: 6px 10px; font-size: 13px; flex: none; }
   .act.small ha-icon { --mdc-icon-size: 16px; }
   .set-val small { font-size: 12px; opacity: .7; }

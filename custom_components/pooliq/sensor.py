@@ -45,6 +45,13 @@ class PoolIQSensorDescription(SensorEntityDescription):
     prop: str | None = None
 
 
+def _epoch(value):
+    if not isinstance(value, (int, float)):
+        return None
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(value, tz=timezone.utc)
+
+
 TEMP_LABELS = {"WaterTemp": "TempNameA", "WaterTempB": "TempNameB"}
 
 SENSORS: tuple[PoolIQSensorDescription, ...] = (
@@ -194,10 +201,19 @@ def _timer(n: int) -> Callable[[dict[str, Any]], Any]:
 # Created only on devices that report them (chlorinators).
 CHLORINATOR_SENSORS: tuple[PoolIQSensorDescription, ...] = (
     PoolIQSensorDescription(
+        # When the running boost ends; HA shows it as a countdown.
+        key="boost_ends",
+        requires="OutputSetPoint",
+        name="Boost ends",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:rocket-launch-outline",
+        value_fn=lambda props: _epoch((props.get("BoostEndsAt") or {}).get("value")),
+    ),
+    PoolIQSensorDescription(
         # The figure the unit (and the Pool IQ app) shows at the end of a salt test.
         key="SaltTestResult",
         requires="OutputSetPoint",
-        name="Salt test result",
+        name="Salt reading",
         native_unit_of_measurement="ppm",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:shaker-outline",
@@ -206,7 +222,7 @@ CHLORINATOR_SENSORS: tuple[PoolIQSensorDescription, ...] = (
         key="fault_status",
         prop="Fault",
         requires="Fault",
-        name="Fault",
+        name="Status",
         source="text",
         icon="mdi:alert-circle-outline",
         value_fn=lambda props: fault_text((props.get("Fault") or {}).get("value")),

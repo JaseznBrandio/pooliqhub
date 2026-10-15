@@ -9,6 +9,7 @@ sends them.
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +23,7 @@ from homeassistant.components.number import NumberEntity
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTime
+from homeassistant.exceptions import HomeAssistantError
 
 from .coordinator import PoolIQCoordinator
 from .entity import PoolIQEntity
@@ -251,7 +253,6 @@ class BoostHours(PoolIQEntity, RestoreNumber):
     _attr_native_step = 1
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_mode = NumberMode.BOX
-    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: PoolIQCoordinator) -> None:
         super().__init__(coordinator, "boost_hours")
@@ -267,14 +268,16 @@ class BoostHours(PoolIQEntity, RestoreNumber):
         return float(self.coordinator.boost_hours)
 
     async def async_set_native_value(self, value: float) -> None:
+        if self.coordinator.boost_ends is not None:
+            raise HomeAssistantError("Stop boost before changing its duration.")
         self.coordinator.boost_hours = int(value)
         self.async_write_ha_state()
 
 
 class PhAmount(PoolIQEntity, RestoreNumber):
-    """pH2 demand / prime amount in ml. Only sent to the unit when Start pH dose is pressed."""
+    """pH2 prime / demand amount in ml. Only sent when Start Prime / Demand Dosing is pressed."""
 
-    _attr_name = "pH2 prime amount"
+    _attr_name = "pH2 Prime / Demand amount"
     _attr_icon = "mdi:beaker-outline"
     _attr_native_min_value = 10
     _attr_native_max_value = 2000
@@ -364,12 +367,16 @@ class ChlorButton(PoolIQEntity, ButtonEntity):
                 {"menu": "M4", "button": "CHLORBOOST=START", "param": f"RUNHOURS={hours}"},
                 wait=False,
             )
+            self.coordinator.set_boost(time.time() + hours * 3600)
+            self.coordinator.hold("SpecMode", 2)
         elif key == "boost_stop":
             await self.coordinator.async_invoke(
                 "optionRequest",
                 {"menu": "M4", "button": "CHLORBOOST=STOP", "param": f"RUNHOURS={hours}"},
                 wait=False,
             )
+            self.coordinator.set_boost(None)
+            self.coordinator.hold("SpecMode", 0)
         elif key == "ph_start":
             # Same as the app: sending the amount starts a dose run.
             await self.coordinator.async_write({"pHRunAtDose": self.coordinator.ph_amount})
@@ -385,9 +392,9 @@ class ChlorButton(PoolIQEntity, ButtonEntity):
 CHLOR_BUTTONS: tuple[ButtonEntityDescription, ...] = (
     ButtonEntityDescription(key="boost_start", name="Start boost", icon="mdi:rocket-launch"),
     ButtonEntityDescription(key="boost_stop", name="Stop boost", icon="mdi:stop-circle-outline"),
-    ButtonEntityDescription(key="salt_test", name="Run salt test", icon="mdi:shaker-outline"),
-    ButtonEntityDescription(key="ph_start", name="Start pH dose", icon="mdi:play-circle-outline"),
-    ButtonEntityDescription(key="ph_stop", name="Stop pH dose", icon="mdi:stop-circle-outline"),
+    ButtonEntityDescription(key="salt_test", name="Test Salt Level", icon="mdi:shaker-outline"),
+    ButtonEntityDescription(key="ph_start", name="Start Prime / Demand Dosing", icon="mdi:play-circle-outline"),
+    ButtonEntityDescription(key="ph_stop", name="Stop Prime / Demand Dosing", icon="mdi:stop-circle-outline"),
 )
 
 

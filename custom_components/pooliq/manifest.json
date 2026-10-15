@@ -16,5 +16,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/JaseznBrandio/pooliqhub/issues",
   "requirements": [],
-  "version": "0.4.5"
+  "version": "0.4.6"
 }

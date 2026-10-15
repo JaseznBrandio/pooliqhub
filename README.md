@@ -31,13 +31,13 @@ When the device is a salt chlorinator (it reports an output setpoint), it gets:
 
 - **Chlorinator mode** (On / Off / Auto) and an **Output setpoint** slider (0 to 100%) for the active mode
 - **Mode** (Normal / Winter / Spa), with the output control adjusting the setting for the active mode
-- **pH dosing** on/off, with **pH1 run time** (min/day), **pH2 prime amount** (ml) and **Start / Stop pH dose** buttons. The prime amount is only sent when you press Start.
-- **Start boost** / **Stop boost** buttons, with a **Boost duration** setting (hours)
-- **Run salt test** button
+- **pH dosing** on/off, with **pH1 run time** (min/day), **pH2 Prime / Demand amount** (ml) and **Start / Stop Prime / Demand Dosing** buttons. The amount is only sent when you press Start.
+- **Start boost** / **Stop boost** buttons, a **Boost duration** setting (hours, locked while boost runs) and a **Boost ends** countdown
+- **Test Salt Level** button
 - **Special mode** (Normal, Boost, Backwash, Salt test), **Running on** (which timer is active), and **Timer 1 / Timer 2** windows
 - **Power pack temperature** (°C)
-- **Salt test result** (ppm): the figure the unit and the Pool IQ app show at the end of a salt test. **Salt level** is the unit's separate live reading, so the two can differ slightly.
-- **Fault**: the fault in plain words (for example "Low flow"), or "Code N" for codes not yet known. The raw number is in the **Fault code** sensor.
+- **Salt reading** (ppm): the salt test result, the figure the unit and the Pool IQ app show at the end of a salt test.
+- **Status**: any fault in plain words (for example "Low flow"), or "Code N" for codes not yet known. The raw number is in the **Fault code** sensor.
 
 Backwash is a multi-step routine on the unit and is left to the Pool IQ app.
 
