@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Boost start and stop no longer show a "Timeout" error. The unit carries them out but never sends a reply, so Home Assistant now sends the command and confirms it from the unit's status instead of waiting 10 seconds.
+- Buttons respond faster for the same reason.
+- Default polling is now every 30 seconds (was 5 minutes), so changes made in the Pool IQ app or on the unit show up quickly. Existing installs on the old default move to 30 seconds automatically.
+- While a fault is active, Home Assistant checks every 10 seconds, so it sees the unit clear the fault and restart.
+- New **Salt test result** sensor: the figure the unit and the Pool IQ app show at the end of a salt test. Shown on the Pool IQ page as "Last salt test".
+- New **Fault** sensor in plain words (16 = Low flow); codes not yet known show as "Code N".
+
 ## 0.4.1
 
 - Chlorinator status now follows the unit through purge, boost and salt test. After any command, Home Assistant checks every 5 seconds for 90 seconds, and keeps checking every 10 seconds while the unit is purging or running a salt test.

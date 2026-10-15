@@ -36,6 +36,8 @@ When the device is a salt chlorinator (it reports an output setpoint), it gets:
 - **Run salt test** button
 - **Special mode** (Normal, Boost, Backwash, Salt test), **Running on** (which timer is active), and **Timer 1 / Timer 2** windows
 - **Power pack temperature** (°C)
+- **Salt test result** (ppm): the figure the unit and the Pool IQ app show at the end of a salt test. **Salt level** is the unit's separate live reading, so the two can differ slightly.
+- **Fault**: the fault in plain words (for example "Low flow"), or "Code N" for codes not yet known. The raw number is in the **Fault code** sensor.
 
 Backwash is a multi-step routine on the unit and is left to the Pool IQ app.
 
@@ -85,7 +87,7 @@ Finding the device ID: it is shown in the Pool IQ app. A controller hub and a ch
 
 Devices are named Pool IQ Controller, Pool IQ Chlorinator or Pool IQ Device depending on what they report. Rename any of them in Home Assistant (for example "Water filler") and the sidebar page follows.
 
-Change the polling interval (default 300s) any time via the integration's **Configure** button.
+Change the polling interval (default 30 seconds) any time via the integration's **Configure** button.
 
 ## Example dashboard card
 

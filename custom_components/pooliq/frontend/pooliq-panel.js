@@ -279,7 +279,9 @@ class PoolIQPanel extends HTMLElement {
       if (eid === r.fault && st) text = Number(st.state) === 0 ? "OK" : `Code ${st.state}`;
       if (eid === r.pump && st) text = st.state === "on" ? "Running" : "Stopped";
       if (eid === r.work_mode && st && /^(null|none)$/i.test(st.state)) text = "Normal";
-      const warn = eid === r.fault && st && Number(st.state) !== 0;
+      const warn =
+        (eid === r.fault && st && Number(st.state) !== 0) ||
+        (eid === r.fault_text && st && !["OK", "unknown", "unavailable"].includes(st.state));
       return `
         <button class="stat ${warn ? "warn" : ""}" data-action="more-info" data-entity="${esc(eid)}">
           <ha-icon icon="${icon}"></ha-icon>
@@ -289,12 +291,15 @@ class PoolIQPanel extends HTMLElement {
 
     const stats = [
       stat(r.salt, "Salt", "mdi:shaker-outline"),
+      stat(r.salt_test_result, "Last salt test", "mdi:shaker-outline"),
       stat(r.output, "Chlorinator output", "mdi:water-percent"),
       stat(r.cell, "Cell", "mdi:flash-outline"),
       stat(r.pump, "Chlorinator pump", "mdi:pump"),
       stat(r.power_pack, "Power pack", "mdi:thermometer"),
       stat(r.work_mode, "Work mode", "mdi:cog-outline"),
-      stat(r.fault, "Faults", "mdi:alert-circle-outline"),
+      r.fault_text
+        ? stat(r.fault_text, "Faults", "mdi:alert-circle-outline")
+        : stat(r.fault, "Faults", "mdi:alert-circle-outline"),
     ].join("");
 
     const sockets = d.sockets.length

@@ -11,6 +11,8 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 
 _TIMEOUT = aiohttp.ClientTimeout(total=20)
+# Long enough for the cloud to pass a command on; the device acts within a second.
+_SEND_TIMEOUT = aiohttp.ClientTimeout(total=4)
 
 SOCKET_KEYS = tuple(f"SOCKET{i}" for i in range(1, 10))
 SOCKET_MODES = ("ON", "OFF", "AUTO")
@@ -82,6 +84,7 @@ class PoolIQClient:
         *,
         params: dict[str, Any] | None = None,
         json_body: Any = None,
+        timeout: aiohttp.ClientTimeout = _TIMEOUT,
     ) -> tuple[int, Any]:
         """Authenticated request. Re-logs in once if the token is rejected."""
         for attempt in (1, 2):
@@ -95,7 +98,7 @@ class PoolIQClient:
                     params=params,
                     json=json_body,
                     headers=headers,
-                    timeout=_TIMEOUT,
+                    timeout=timeout,
                 ) as resp:
                     if resp.status in (401, 403) and attempt == 1:
                         self._token = None
@@ -160,6 +163,50 @@ class PoolIQClient:
             found = self._parse_socket_reports(await self._log_rows(unfiltered))
         return found
 
+    async def async_get_salt_test(self, deep: bool = False) -> dict[str, Any] | None:
+        """Result of the most recent salt test, as the unit shows it at the end of the test.
+
+        The test runs on the unit's salt test screen (menu M10), which sends
+        "TDS=<ppm>&condition=OK" while it measures. Returns {"value": ppm, "ts": ms}.
+        """
+        rows = await self._log_rows({
+            "pageIndex": 0,
+            "pageSize": 200 if deep else 40,
+            "sorts[0].name": "timestamp",
+            "sorts[0].order": "desc",
+            "terms[0].column": "content",
+            "terms[0].termType": "like",
+            "terms[0].value": "%TDS=%",
+        })
+        return self._parse_salt_test(rows)
+
+    @staticmethod
+    def _parse_salt_test(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+        best: dict[str, Any] | None = None
+        for row in rows:
+            content = row.get("content") if isinstance(row, dict) else None
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except ValueError:
+                    continue
+            if not isinstance(content, dict) or content.get("event") != "menuStatus":
+                continue
+            data = content.get("data") or {}
+            if data.get("menu") != "M10" or not isinstance(data.get("param"), str):
+                continue
+            fields = dict(parse_qsl(data["param"]))
+            if fields.get("condition", "").strip() != "OK":
+                continue
+            try:
+                value = int(fields.get("TDS", "0"))
+            except ValueError:
+                continue
+            ts = row.get("createTime") or row.get("timestamp") or 0
+            if value > 0 and (best is None or ts > best["ts"]):
+                best = {"value": value, "ts": ts}
+        return best
+
     async def _log_rows(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         status, data = await self._request(
             "GET", f"/api/device-instance/{self._device_id}/logs", params=params
@@ -214,13 +261,30 @@ class PoolIQClient:
         if status != 200 or (isinstance(data, dict) and data.get("status") not in (None, 200)):
             raise PoolIQConnectionError(f"Write {values} rejected [{status}]: {data}")
 
-    async def async_invoke(self, function: str, inputs: dict[str, Any] | None = None) -> Any:
-        """Call a device function, e.g. triggerReport or optionRequest (boost, salt test)."""
-        status, data = await self._request(
-            "POST",
-            f"/api/device/invoked/{self._device_id}/function/{function}",
-            json_body=inputs or {},
-        )
+    async def async_invoke(
+        self, function: str, inputs: dict[str, Any] | None = None, *, wait: bool = True
+    ) -> Any:
+        """Call a device function, e.g. triggerReport or optionRequest (boost, salt test).
+
+        Some on-screen buttons (boost start/stop) are carried out by the device but
+        never get a function reply, so the cloud answers "time_out" after 10s. With
+        wait=False the command is sent, and a missing reply is not treated as an error;
+        the device's own status reports confirm what happened.
+        """
+        path = f"/api/device/invoked/{self._device_id}/function/{function}"
+        if not wait:
+            try:
+                status, data = await self._request(
+                    "POST", path, json_body=inputs or {}, timeout=_SEND_TIMEOUT
+                )
+            except PoolIQConnectionError as err:
+                if isinstance(err.__cause__, TimeoutError):
+                    return None  # sent; the device doesn't reply to this one
+                raise
+            if isinstance(data, dict) and data.get("code") == "time_out":
+                return None
+        else:
+            status, data = await self._request("POST", path, json_body=inputs or {})
         if status != 200 or (isinstance(data, dict) and data.get("status") not in (None, 200)):
             raise PoolIQConnectionError(f"Function {function} rejected [{status}]: {data}")
         return (data or {}).get("result") if isinstance(data, dict) else data

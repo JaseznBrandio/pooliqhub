@@ -265,11 +265,13 @@ class ChlorButton(PoolIQEntity, ButtonEntity):
             await self.coordinator.async_invoke(
                 "optionRequest",
                 {"menu": "M4", "button": "CHLORBOOST=START", "param": f"RUNHOURS={hours}"},
+                wait=False,
             )
         elif key == "boost_stop":
             await self.coordinator.async_invoke(
                 "optionRequest",
                 {"menu": "M4", "button": "CHLORBOOST=STOP", "param": f"RUNHOURS={hours}"},
+                wait=False,
             )
         elif key == "salt_test":
             # Opening the salt test screen (menu M10) runs the test.

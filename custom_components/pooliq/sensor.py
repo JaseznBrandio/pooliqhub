@@ -22,7 +22,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, fault_text
 from .coordinator import PoolIQCoordinator
 from .entity import PoolIQEntity
 
@@ -193,6 +193,24 @@ def _timer(n: int) -> Callable[[dict[str, Any]], Any]:
 
 # Created only on devices that report them (chlorinators).
 CHLORINATOR_SENSORS: tuple[PoolIQSensorDescription, ...] = (
+    PoolIQSensorDescription(
+        # The figure the unit (and the Pool IQ app) shows at the end of a salt test.
+        key="SaltTestResult",
+        requires="OutputSetPoint",
+        name="Salt test result",
+        native_unit_of_measurement="ppm",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:shaker-outline",
+    ),
+    PoolIQSensorDescription(
+        key="fault_status",
+        prop="Fault",
+        requires="Fault",
+        name="Fault",
+        source="text",
+        icon="mdi:alert-circle-outline",
+        value_fn=lambda props: fault_text((props.get("Fault") or {}).get("value")),
+    ),
     PoolIQSensorDescription(
         # Reported in whole degrees (26 = 26°C), unlike the water probes.
         key="power_pack_temp",

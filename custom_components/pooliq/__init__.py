@@ -16,10 +16,21 @@ from .const import (
     DEFAULT_HOST,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    OLD_DEFAULT_SCAN_INTERVAL,
     PLATFORMS,
 )
 from .coordinator import PoolIQCoordinator
 from .panel import async_maybe_remove_panel, async_setup_panel
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Move entries still on the old 5 minute default to the new 30 second one."""
+    if entry.version == 1 and entry.minor_version < 2:
+        options = dict(entry.options)
+        if options.get(CONF_SCAN_INTERVAL, OLD_DEFAULT_SCAN_INTERVAL) == OLD_DEFAULT_SCAN_INTERVAL:
+            options[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+        hass.config_entries.async_update_entry(entry, options=options, minor_version=2)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

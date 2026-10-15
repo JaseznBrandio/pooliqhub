@@ -57,6 +57,9 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._normal_interval = timedelta(seconds=scan_interval)
         self._fast_until = 0.0
         self._settling_since: float | None = None
+        self._salt_test: dict[str, Any] | None = None
+        self._salt_checked = 0.0
+        self._was_testing = False
         # Socket state is only visible when the hub reports a change, so the
         # last known state is cached here and persisted across restarts.
         self._sockets: dict[str, dict[str, Any]] = {}
@@ -116,8 +119,41 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if changed:
             self._save_cache()
 
+        if "OutputSetPoint" in props:
+            await self._update_salt_test(props)
+            if self._salt_test:
+                props = {**props, "SaltTestResult": {
+                    "property": "SaltTestResult",
+                    "value": self._salt_test["value"],
+                    "numberValue": self._salt_test["value"],
+                    "timestamp": self._salt_test["ts"],
+                }}
+
         self._pick_interval(props)
         return {"properties": props, "sockets": dict(self._sockets)}
+
+    async def _update_salt_test(self, props: dict[str, Any]) -> None:
+        """Fetch the last salt test result when one may have just run (or every 5 min)."""
+        testing = str((props.get("SpecMode") or {}).get("value", "")) == "3"
+        now = time.monotonic()
+        due = (
+            self._salt_checked == 0.0
+            or testing
+            or self._was_testing
+            or now < self._fast_until
+            or now - self._salt_checked > 300
+        )
+        self._was_testing = testing
+        if not due:
+            return
+        try:
+            result = await self.client.async_get_salt_test(deep=self._salt_checked == 0.0)
+        except PoolIQError as err:
+            _LOGGER.debug("Salt test read failed: %s", err)
+            return
+        self._salt_checked = now
+        if result and (self._salt_test is None or result["ts"] >= self._salt_test["ts"]):
+            self._salt_test = result
 
     @staticmethod
     def _is_settling(props: dict[str, Any]) -> bool:
@@ -125,7 +161,10 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         def val(key: str) -> str:
             return str((props.get(key) or {}).get("value", "")).upper()
 
-        return val("CellStatus") == "PURGE" or val("SpecMode") == "3"  # 3 = salt test
+        if val("CellStatus") == "PURGE" or val("SpecMode") == "3":  # 3 = salt test
+            return True
+        # A fault (e.g. low flow) clears itself once the cause is fixed.
+        return val("Fault") not in ("", "0", "NONE", "NULL")
 
     @callback
     def _pick_interval(self, props: dict[str, Any]) -> None:
@@ -187,10 +226,12 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.async_set_updated_data({**self.data, "properties": props})
         self._schedule_confirm()
 
-    async def async_invoke(self, function: str, inputs: dict[str, Any] | None = None) -> None:
+    async def async_invoke(
+        self, function: str, inputs: dict[str, Any] | None = None, *, wait: bool = True
+    ) -> None:
         """Call a device function (boost, salt test), then refresh."""
         try:
-            await self.client.async_invoke(function, inputs)
+            await self.client.async_invoke(function, inputs, wait=wait)
         except (PoolIQConnectionError, PoolIQAuthError) as err:
             raise HomeAssistantError(f"Pool IQ: {function} failed: {err}") from err
         self._schedule_confirm()
