@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DOMAIN = "pooliq"
-VERSION = "0.4.6"
+VERSION = "0.4.7"
 
 # JetLinks backend the Pool IQ app talks to.
 DEFAULT_HOST = "http://47.236.42.212:8850"

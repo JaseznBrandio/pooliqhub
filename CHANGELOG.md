@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.7
+
+- Chlorinator readings are separated by thin divider lines instead of outlined cards, four across on wide screens and two across on narrower ones, so every row fills evenly.
+- Clearer labels: Water Temp, Actual Output, Cell Status, Pump Status, Power Pack Temp.
+- Buttons always show an outline, whatever the Home Assistant theme.
+
 ## 0.4.6
 
 - **Chlorinator page redesigned.** Controls first: Power, Mode, Output and Boost on the left; readings on the right as small outlined cards (Salt Reading, water temperature, actual output, cell, pump, power pack, status). Stacks on a phone, controls on top.

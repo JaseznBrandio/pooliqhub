@@ -440,11 +440,13 @@ class PoolIQPanel extends HTMLElement {
     const fault = val(r.fault_text);
     const cards = [
       saltCard,
-      ...temps.map((eid) => mc(eid, this._shortName(eid), "mdi:thermometer-water")),
-      mc(r.output, "Actual output", "mdi:water-percent"),
-      mc(r.cell, "Cell", "mdi:flash-outline", specialText !== "Normal" ? specialText : undefined),
-      mc(r.pump, "Pump", "mdi:pump", pump ? (pump.state === "on" ? "Running" : "Stopped") : undefined),
-      mc(r.power_pack, "Power pack", "mdi:thermometer"),
+      // One probe is just "Water Temp"; two keep their own names (e.g. Pool / Spa).
+      ...temps.map((eid) => mc(eid, temps.length === 1 ? "Water Temp" : this._shortName(eid),
+        "mdi:thermometer-water")),
+      mc(r.output, "Actual Output", "mdi:water-percent"),
+      mc(r.cell, "Cell Status", "mdi:flash-outline", specialText !== "Normal" ? specialText : undefined),
+      mc(r.pump, "Pump Status", "mdi:pump", pump ? (pump.state === "on" ? "Running" : "Stopped") : undefined),
+      mc(r.power_pack, "Power Pack Temp", "mdi:thermometer"),
       r.fault_text
         ? mc(r.fault_text, "Status", "mdi:alert-circle-outline", undefined, fault && fault.state !== "OK")
         : mc(r.fault, "Status", "mdi:alert-circle-outline"),
@@ -460,7 +462,7 @@ class PoolIQPanel extends HTMLElement {
             ${output}
             ${boost}
           </div>
-          <div class="mcards">${cards}</div>
+          <div class="mcards-wrap"><div class="mcards">${cards}</div></div>
         </div>
         ${this._renderPh(r)}
       </section>`;
@@ -639,7 +641,7 @@ const STYLES = `
     background: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); color: var(--secondary-text-color); }
   .chip ha-icon, .act ha-icon { --mdc-icon-size: 18px; }
   .chip.on { background: color-mix(in srgb, var(--pq-accent) 18%, transparent); color: var(--pq-accent); }
-  .act { color: var(--primary-text-color); border: var(--pq-border); background: none; }
+  .act { color: var(--primary-text-color); border: 1px solid var(--divider-color, rgba(127,127,127,.35)); background: none; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   .hint { color: var(--secondary-text-color); padding: 12px 4px; }
   .tile {
@@ -681,13 +683,16 @@ const STYLES = `
   .chlor2 { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 1.2fr); gap: 20px; padding: 16px; }
   .chlor2.boosting { border-color: var(--warning-color, #ff9800); }
   .ctl-col { display: flex; flex-direction: column; gap: 12px; }
-  .mcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; align-content: start; }
-  .mc { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px;
-    border: var(--pq-border); border-radius: 12px; min-width: 0; }
+  /* Readings: thin lines between cells only (the outer edge is clipped away). */
+  .mcards-wrap { overflow: hidden; align-self: start; }
+  .mcards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: -1px 0 0 -1px; }
+  .mc { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 14px;
+    border: 0; border-radius: 0; min-width: 0;
+    border-left: 1px solid var(--divider-color, rgba(127,127,127,.25));
+    border-top: 1px solid var(--divider-color, rgba(127,127,127,.25)); }
   .mc ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); margin-bottom: 2px; }
   .mc-label { font-size: 12px; color: var(--secondary-text-color); }
   .mc-value { font-size: 17px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .mc.warn { border-color: var(--error-color, #db4437); }
   .mc.warn .mc-value { color: var(--error-color, #db4437); }
   .mc.salt { grid-column: span 2; gap: 8px; }
   .mc-main { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; }
@@ -703,6 +708,10 @@ const STYLES = `
   .ph-demand { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
   @media (max-width: 760px) {
     .chlor2 { grid-template-columns: 1fr; }
+  }
+  /* Four across when there's room; otherwise two (both fill every row evenly). */
+  @media (max-width: 520px), (min-width: 761px) and (max-width: 1180px) {
+    .mcards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   .ph-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 12px; }
   .mini { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1 1 140px; }
