@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Pool IQ chlorinator",
-        "description": "Connects to the Pool IQ cloud and polls your salt chlorinator. The device ID is the controller's 12-character ID (such as 0070XXXXXXXX), shown in the Pool IQ app. Enter the username and password supplied by Pool IQ Hub. Leave the backend host as it is.",
+        "title": "Add a Pool IQ Hub device",
+        "description": "Connects a Pool IQ Hub device (such as a controller, chlorinator or water filler) to Home Assistant. Each device has its own 12-character device ID, shown in the Pool IQ app. Add the integration once for each device. Enter the username and password supplied by Pool IQ Hub. Leave the backend host as it is.",
         "data": {
           "device_id": "Device ID",
           "host": "Backend host",

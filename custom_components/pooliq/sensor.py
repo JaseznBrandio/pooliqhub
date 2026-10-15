@@ -41,6 +41,8 @@ class PoolIQSensorDescription(SensorEntityDescription):
     value_fn: Callable[[dict[str, Any]], Any] | None = None
     # Only create the entity when the device reports this property.
     requires: str | None = None
+    # Property to read when it differs from the key (key also forms the unique id).
+    prop: str | None = None
 
 
 TEMP_LABELS = {"WaterTemp": "TempNameA", "WaterTempB": "TempNameB"}
@@ -120,16 +122,6 @@ SENSORS: tuple[PoolIQSensorDescription, ...] = (
     ),
     # --- Diagnostics ---
     PoolIQSensorDescription(
-        key="internal_temperature",
-        name="Controller temperature",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-        divide=10.0,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-    ),
-    PoolIQSensorDescription(
         key="WIFI_RSSI",
         name="WiFi signal",
         state_class=SensorStateClass.MEASUREMENT,
@@ -202,6 +194,16 @@ def _timer(n: int) -> Callable[[dict[str, Any]], Any]:
 # Created only on devices that report them (chlorinators).
 CHLORINATOR_SENSORS: tuple[PoolIQSensorDescription, ...] = (
     PoolIQSensorDescription(
+        # Reported in whole degrees (26 = 26°C), unlike the water probes.
+        key="power_pack_temp",
+        prop="internal_temperature",
+        requires="internal_temperature",
+        name="Power pack temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    PoolIQSensorDescription(
         key="SpecMode",
         name="Special mode",
         source="text",
@@ -267,7 +269,7 @@ async def async_setup_entry(
 
 
 class PoolIQSensor(PoolIQEntity, SensorEntity):
-    """A single reading from the chlorinator."""
+    """A single reading from a Pool IQ device."""
 
     entity_description: PoolIQSensorDescription
 
@@ -290,7 +292,7 @@ class PoolIQSensor(PoolIQEntity, SensorEntity):
         if desc.value_fn is not None:
             return desc.value_fn((self.coordinator.data or {}).get("properties") or {})
 
-        item = self._prop(desc.key)
+        item = self._prop(desc.prop or desc.key)
         if item is None:
             return None
 

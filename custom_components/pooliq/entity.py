@@ -13,15 +13,23 @@ from .coordinator import PoolIQCoordinator
 
 
 def device_info(coordinator: PoolIQCoordinator) -> DeviceInfo:
+    """Name the device after what it reports; anything unrecognised is a generic Pool IQ device.
+
+    Users can rename it in Home Assistant (e.g. "Water filler") and the panel follows.
+    """
     props = (coordinator.data or {}).get("properties") or {}
     sw = (props.get("software_ver") or {}).get("value")
-    # A device with an output setpoint has a salt cell; otherwise it's a controller hub.
-    chlorinator = "OutputSetPoint" in props
+    if "OutputSetPoint" in props:  # has a salt cell
+        name, model = "Pool IQ Chlorinator", "Salt chlorinator"
+    elif coordinator.sockets:  # reports switched sockets
+        name, model = "Pool IQ Controller", "Controller hub"
+    else:
+        name, model = "Pool IQ Device", "Pool IQ Hub device"
     return DeviceInfo(
         identifiers={(DOMAIN, coordinator.client.device_id)},
-        name="Pool IQ Chlorinator" if chlorinator else "Pool IQ Controller",
+        name=name,
         manufacturer="Pool IQ Hub",
-        model="SL Series salt chlorinator" if chlorinator else "Pool IQ controller hub",
+        model=model,
         sw_version=sw,
     )
 

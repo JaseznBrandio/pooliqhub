@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Pool IQ 盐氯机",
-        "description": "连接 Pool IQ 云平台并轮询您的盐氯机。设备 ID 是控制器的 12 位编号（例如 0070XXXXXXXX），可在 Pool IQ 应用中查看。请输入 Pool IQ Hub 提供的用户名和密码。后端服务器地址请保持不变。",
+        "title": "添加 Pool IQ Hub 设备",
+        "description": "将 Pool IQ Hub 设备（例如控制器、盐氯机或自动补水器）连接到 Home Assistant。每台设备都有自己的 12 位设备 ID，可在 Pool IQ 应用中查看。每台设备需分别添加一次此集成。请输入 Pool IQ Hub 提供的用户名和密码。后端服务器地址请保持不变。",
         "data": {
           "device_id": "设备 ID",
           "host": "后端服务器地址",

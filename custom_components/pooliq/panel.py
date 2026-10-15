@@ -34,6 +34,7 @@ READING_KEYS = {
     "PumpStatus": "pump",
     # chlorinator
     "SpecMode": "special",
+    "power_pack_temp": "power_pack",
     "PowerMode_ctl": "mode",
     "OutputSetPoint_ctl": "setpoint",
     "WinterMode_ctl": "winter",
@@ -96,7 +97,7 @@ def async_maybe_remove_panel(hass: HomeAssistant, unloading_entry_id: str) -> No
 def ws_list_devices(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """List configured controllers and the entity ids the panel should show."""
+    """List configured Pool IQ devices and the entity ids the panel should show."""
     registry = er.async_get(hass)
     devices = []
     for entry in hass.config_entries.async_entries(DOMAIN):

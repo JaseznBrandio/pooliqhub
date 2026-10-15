@@ -248,7 +248,7 @@ class PoolIQPanel extends HTMLElement {
     return `
       <div class="card empty">
         <ha-icon icon="mdi:pool"></ha-icon>
-        <h2>No Pool IQ controller set up yet</h2>
+        <h2>No Pool IQ device set up yet</h2>
         <p>Add one under <a href="/config/integrations/integration/pooliq">Settings → Devices &amp; services → Pool IQ</a>.</p>
       </div>`;
   }
@@ -292,6 +292,7 @@ class PoolIQPanel extends HTMLElement {
       stat(r.output, "Chlorinator output", "mdi:water-percent"),
       stat(r.cell, "Cell", "mdi:flash-outline"),
       stat(r.pump, "Chlorinator pump", "mdi:pump"),
+      stat(r.power_pack, "Power pack", "mdi:thermometer"),
       stat(r.work_mode, "Work mode", "mdi:cog-outline"),
       stat(r.fault, "Faults", "mdi:alert-circle-outline"),
     ].join("");

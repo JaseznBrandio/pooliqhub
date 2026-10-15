@@ -6,7 +6,7 @@ This guide takes a fresh Home Assistant installation to a working Pool IQ setup.
 
 - Home Assistant 2024.7 or newer (tested on 2026.2)
 - A Pool IQ hub that is online and working in the Pool IQ app
-- The hub's **device ID**: a 12-character code such as `0070XXXXXXXX`
+- The **device ID** of each Pool IQ Hub device: a 12-character code such as `0070XXXXXXXX`, shown in the Pool IQ app
 - The Pool IQ **username and password** supplied by Pool IQ Hub
 
 ## Step 1: Copy the integration into Home Assistant
@@ -79,7 +79,7 @@ Socket names come from the names set in the Pool IQ app. Sockets with the same n
 
 ### More than one Pool IQ device
 
-A controller hub and a chlorinator each have their own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ sidebar page. A chlorinator gets a **Chlorinator** section with mode, output setpoint, winter and spa modes, pH dosing, boost and salt test.
+Each Pool IQ Hub device (controller hub, chlorinator and so on) has its own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ sidebar page. A chlorinator gets a **Chlorinator** section with mode, output setpoint, winter and spa modes, pH dosing, boost and salt test.
 
 ## Step 5 (optional): Automations
 
@@ -105,7 +105,7 @@ automation:
 | Pool IQ doesn't appear in **Add integration** | Check the folder path is `config/custom_components/pooliq/` and restart Home Assistant. |
 | A socket is missing | Toggle that socket once in the Pool IQ app. It appears within 5 minutes. |
 | Values show "Unavailable" | The hub or the Pool IQ cloud is offline. Check the Pool IQ app. |
-| Changes take a few seconds | Commands go through the Pool IQ cloud to the hub, and the panel waits for the hub's confirmation. |
+| Changes take a few seconds | Commands go through the Pool IQ cloud to the device, and the panel waits for its confirmation. A chlorinator purges for about 15 seconds before the cell turns on; Home Assistant follows it through. |
 | Polling interval | Default is every 5 minutes. Change it under **Pool IQ → Configure**. |
 
 For detailed logs, add this to `configuration.yaml` and restart:

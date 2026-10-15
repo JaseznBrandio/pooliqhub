@@ -1,8 +1,8 @@
 # Pool IQ Hub for Home Assistant
 
-A custom integration that brings your Pool IQ Hub salt chlorinator and its switched sockets into Home Assistant: water temperature, salt level, chlorinator output and status, plus on/off/auto control of everything plugged into the hub (filter pump, lights, blowers, jet pump).
+A custom integration that brings your Pool IQ Hub devices into Home Assistant. A controller hub gives you water temperatures and on/off/auto control of everything plugged into it (filter pump, lights, blowers, jet pump). A salt chlorinator gives you salt level, output, cell status, power pack temperature and full chlorinator control. Other Pool IQ Hub devices appear with the readings they report.
 
-The Pool IQ app has no official Home Assistant integration. This talks to the same JetLinks cloud backend the app uses (`47.236.42.212:8850`), logging in with Pool IQ cloud credentials and reading your device's latest reported values on a schedule.
+The Pool IQ app has no official Home Assistant integration. This talks to the same JetLinks cloud backend the app uses (`47.236.42.212:8850`), logging in with Pool IQ cloud credentials and reading each device's latest reported values on a schedule. After you change something, it checks back every few seconds until the device has settled.
 
 > **New installing this?** See [INSTALL.md](INSTALL.md) for a step-by-step guide with screenshots.
 
@@ -27,7 +27,7 @@ In Auto, the switch shows whether the timer currently has the socket on. The tim
 
 ### Chlorinator control
 
-When the device is a salt chlorinator (it reports an output setpoint), it also gets:
+When the device is a salt chlorinator (it reports an output setpoint), it gets:
 
 - **Chlorinator mode** (On / Off / Auto) and an **Output setpoint** slider (0 to 100%)
 - **Winter mode** and **Spa mode** switches, with their own output settings
@@ -35,6 +35,7 @@ When the device is a salt chlorinator (it reports an output setpoint), it also g
 - **Start boost** / **Stop boost** buttons, with a **Boost duration** setting (hours)
 - **Run salt test** button
 - **Special mode** (Normal, Boost, Backwash, Salt test), **Running on** (which timer is active), and **Timer 1 / Timer 2** windows
+- **Power pack temperature** (°C)
 
 Backwash is a multi-step routine on the unit and is left to the Pool IQ app.
 
@@ -50,17 +51,17 @@ Enabled by default:
 - **Pump** (running / not running, binary sensor)
 - **Fault code**
 
-Disabled by default (enable per entity if you want them): copper level, controller temperature, WiFi signal, pump/cell/power running hours, firmware version, pH dosing pump, cell direction.
+Disabled by default (enable per entity if you want them): copper level, WiFi signal, pump/cell/power running hours, firmware version, pH dosing pump, cell direction.
 
 Some properties (salt, pump, output, cell) only report while the unit is actively running, so they may read as unknown when it is idle. They populate once the pump and cell come on.
 
 ## Requirements
 
 - Home Assistant 2024.7 or newer
-- Your chlorinator's **device ID** (a MAC-style string such as `0070XXXXXXXX`)
+- The **device ID** of each Pool IQ Hub device you want to add (a 12-character code such as `0070XXXXXXXX`)
 - The Pool IQ **username and password** supplied by Pool IQ Hub
 
-Finding the device ID: it is shown in the Pool IQ app, or captured from the app's network traffic (the `device-instance/<ID>` requests).
+Finding the device ID: it is shown in the Pool IQ app. A controller hub and a chlorinator each have their own ID.
 
 ## Install
 
@@ -80,6 +81,9 @@ Finding the device ID: it is shown in the Pool IQ app, or captured from the app'
 1. **Settings → Devices & Services → Add Integration → Pool IQ**.
 2. Enter your **device ID** and the **username** and **password** supplied by Pool IQ Hub. Leave the backend host as it is.
 3. Submit. The integration logs in, confirms it can read the device, and creates the entities.
+4. **More than one device?** Repeat these steps for each one (for example, once for the controller hub and once for the chlorinator). They all appear on the same Pool IQ sidebar page.
+
+Devices are named Pool IQ Controller, Pool IQ Chlorinator or Pool IQ Device depending on what they report. Rename any of them in Home Assistant (for example "Water filler") and the sidebar page follows.
 
 Change the polling interval (default 300s) any time via the integration's **Configure** button.
 

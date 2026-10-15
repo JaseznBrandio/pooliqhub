@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -19,7 +20,15 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
-CONFIRM_DELAY = 6  # seconds to wait for the hub to confirm a write
+CONFIRM_DELAY = 4  # seconds before the first check after a command
+# After a command, poll quickly while the device works through it: a
+# chlorinator purges for ~16s, then ramps its output for another ~15s.
+FAST_INTERVAL = timedelta(seconds=5)
+FAST_WINDOW = 90  # seconds of fast polling after each command
+# While the device is mid-transition on its own (purging, salt test), keep
+# checking every 10s, but never for longer than this.
+SETTLING_INTERVAL = timedelta(seconds=10)
+SETTLING_MAX = 600
 TRIGGER_WAIT = 3  # seconds for the hub to answer a full-report request
 DEFAULT_BOOST_HOURS = 8
 
@@ -45,6 +54,9 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.client = client
         self.entry = entry
+        self._normal_interval = timedelta(seconds=scan_interval)
+        self._fast_until = 0.0
+        self._settling_since: float | None = None
         # Socket state is only visible when the hub reports a change, so the
         # last known state is cached here and persisted across restarts.
         self._sockets: dict[str, dict[str, Any]] = {}
@@ -104,7 +116,30 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if changed:
             self._save_cache()
 
+        self._pick_interval(props)
         return {"properties": props, "sockets": dict(self._sockets)}
+
+    @staticmethod
+    def _is_settling(props: dict[str, Any]) -> bool:
+        """True while the device is in a short-lived state that will change on its own."""
+        def val(key: str) -> str:
+            return str((props.get(key) or {}).get("value", "")).upper()
+
+        return val("CellStatus") == "PURGE" or val("SpecMode") == "3"  # 3 = salt test
+
+    @callback
+    def _pick_interval(self, props: dict[str, Any]) -> None:
+        now = time.monotonic()
+        if self._is_settling(props):
+            self._settling_since = self._settling_since or now
+        else:
+            self._settling_since = None
+        if now < self._fast_until:
+            self.update_interval = FAST_INTERVAL
+        elif self._settling_since is not None and now - self._settling_since < SETTLING_MAX:
+            self.update_interval = SETTLING_INTERVAL
+        else:
+            self.update_interval = self._normal_interval
 
     async def async_set_socket(self, socket: str, mode: str) -> None:
         """Write a socket mode, update optimistically, then confirm shortly after."""
@@ -121,16 +156,16 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._save_cache()
         if self.data is not None:
             self.async_set_updated_data({**self.data, "sockets": dict(self._sockets)})
-
-        async def _confirm(_now) -> None:
-            await self.async_request_refresh()
-
-        async_call_later(self.hass, CONFIRM_DELAY, _confirm)
+        self._schedule_confirm()
 
     @callback
     def _schedule_confirm(self) -> None:
+        """Check back soon after a command, then keep checking quickly for a while."""
+        self._fast_until = time.monotonic() + FAST_WINDOW
+        self.update_interval = FAST_INTERVAL
+
         async def _confirm(_now) -> None:
-            await self.async_request_refresh()
+            await self.async_refresh()
 
         async_call_later(self.hass, CONFIRM_DELAY, _confirm)
 
