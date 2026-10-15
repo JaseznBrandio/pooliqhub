@@ -46,19 +46,22 @@ If you see "Login was rejected", check the username and password. If you see "Co
 
 ## Step 4: What you'll see
 
-### Pool IQ in the sidebar
+### Pool IQ Hub in the sidebar
 
-A **Pool IQ** item appears in the left sidebar. It shows:
+A **Pool IQ Hub** item appears in the left sidebar. It shows:
 
-- Pool and spa temperatures
-- Salt level, chlorinator output, cell status, chlorinator pump and fault status
-- Every socket connected to the hub (pumps, lights, blowers) with an on/off toggle and an **On / Off / Auto** selector. Auto returns the socket to its timer, which is shown underneath.
+- **Controller hub:** pool and spa temperatures, and every socket connected to the hub (pumps, lights, blowers) with an on/off toggle and an **On / Off / Auto** selector. Auto returns the socket to its timer, which is shown underneath.
+- **Chlorinator:** power (On / Off / Auto), mode (Normal / Winter / Spa), output, a boost timer with countdown, the salt reading with a **Test Salt Level** button, water temperature, cell, pump, power pack and status readings, and pH dosing.
 
 It follows the Home Assistant light or dark theme and works on phones.
 
-![Pool IQ panel](docs/screenshots/panel-dark.png)
+![Pool IQ Hub page](docs/screenshots/panel-dark.png)
 
-To hide the sidebar item, go to **Settings → Devices & services → Pool IQ → Configure** and untick **Show Pool IQ in the sidebar**.
+On a phone:
+
+![Pool IQ Hub page on a phone](docs/screenshots/panel-phone.png)
+
+To hide the sidebar item, go to **Settings → Devices & services → Pool IQ → Configure** and untick **Show Pool IQ Hub in the sidebar**.
 
 ### Device page
 
@@ -79,7 +82,7 @@ Socket names come from the names set in the Pool IQ app. Sockets with the same n
 
 ### More than one Pool IQ device
 
-Each Pool IQ Hub device (controller hub, chlorinator and so on) has its own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ sidebar page. A chlorinator gets a **Chlorinator** section with power (On / Off / Auto), mode (Normal / Winter / Spa), output for the active mode, pH dosing, boost and salt test.
+Each Pool IQ Hub device (controller hub, chlorinator and so on) has its own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ Hub sidebar page. A chlorinator gets a **Chlorinator** section with power (On / Off / Auto), mode (Normal / Winter / Spa), output for the active mode, pH dosing, boost and salt test.
 
 ## Step 5 (optional): Automations
 

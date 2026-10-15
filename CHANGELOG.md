@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.8
+
+- The sidebar item is now called **Pool IQ Hub**.
+- README and install guide screenshots updated to the current layout, including a phone view.
+
 ## 0.4.7
 
 - Chlorinator readings are separated by thin divider lines instead of outlined cards, four across on wide screens and two across on narrower ones, so every row fills evenly.

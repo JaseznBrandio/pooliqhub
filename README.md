@@ -6,13 +6,13 @@ The Pool IQ app has no official Home Assistant integration. This talks to the sa
 
 > **New installing this?** See [INSTALL.md](INSTALL.md) for a step-by-step guide with screenshots.
 
-## Pool IQ sidebar panel
+## Pool IQ Hub sidebar page
 
-After setup, a **Pool IQ** item appears in the Home Assistant sidebar: a ready-made control panel with pool and spa temperatures, chlorinator status, and every socket with an on/off toggle and an On/Off/Auto selector. It follows your light/dark theme and works on mobile. No dashboard editing required.
+After setup, a **Pool IQ Hub** item appears in the Home Assistant sidebar: a ready-made control page. A controller hub shows pool and spa temperatures and every socket with an on/off toggle and an On/Off/Auto selector. A chlorinator shows power, mode, output, boost timer, salt reading with a salt test button, status readings and pH dosing. It follows your light/dark theme and works on mobile. No dashboard editing required.
 
-![Pool IQ panel](docs/screenshots/panel-dark.png)
+![Pool IQ Hub page](docs/screenshots/panel-dark.png)
 
-Turn it off under **Pool IQ → Configure → Show Pool IQ in the sidebar** if you'd rather build your own dashboard.
+Turn it off under **Pool IQ → Configure → Show Pool IQ Hub in the sidebar** if you'd rather build your own dashboard.
 
 ## Entities
 
@@ -83,7 +83,7 @@ Finding the device ID: it is shown in the Pool IQ app. A controller hub and a ch
 1. **Settings → Devices & Services → Add Integration → Pool IQ**.
 2. Enter your **device ID** and the **username** and **password** supplied by Pool IQ Hub. Leave the backend host as it is.
 3. Submit. The integration logs in, confirms it can read the device, and creates the entities.
-4. **More than one device?** Repeat these steps for each one (for example, once for the controller hub and once for the chlorinator). They all appear on the same Pool IQ sidebar page.
+4. **More than one device?** Repeat these steps for each one (for example, once for the controller hub and once for the chlorinator). They all appear on the same Pool IQ Hub sidebar page.
 
 Devices are named Pool IQ Controller, Pool IQ Chlorinator or Pool IQ Device depending on what they report. Rename any of them in Home Assistant (for example "Water filler") and the sidebar page follows.
 

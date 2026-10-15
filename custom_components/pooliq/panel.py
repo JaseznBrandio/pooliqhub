@@ -76,7 +76,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
             frontend_url_path=PANEL_URL_PATH,
             webcomponent_name=PANEL_COMPONENT,
             module_url=f"{STATIC_URL}/pooliq-panel.js?v={VERSION}",
-            sidebar_title="Pool IQ",
+            sidebar_title="Pool IQ Hub",
             sidebar_icon="mdi:pool",
             require_admin=False,
             config={},

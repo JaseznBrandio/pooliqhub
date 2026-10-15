@@ -28,7 +28,7 @@
         "description": "轮询间隔，以及是否在 Home Assistant 侧边栏中显示 Pool IQ 控制面板。",
         "data": {
           "scan_interval": "轮询间隔（秒）",
-          "show_panel": "在侧边栏中显示 Pool IQ"
+          "show_panel": "在侧边栏中显示 Pool IQ Hub"
         }
       }
     }

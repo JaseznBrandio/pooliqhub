@@ -1,5 +1,5 @@
 /*
- * Pool IQ sidebar panel for Home Assistant.
+ * Pool IQ Hub sidebar panel for Home Assistant.
  * Plain web component, no build step. Uses Home Assistant theme variables so it
  * follows the user's light/dark theme. Talks to the integration through the
  * "pooliq/devices" websocket command and normal service calls.
@@ -238,7 +238,7 @@ class PoolIQPanel extends HTMLElement {
       <style>${STYLES}</style>
       <div class="toolbar">
         <ha-menu-button></ha-menu-button>
-        <div class="title">Pool IQ</div>
+        <div class="title">Pool IQ Hub</div>
       </div>
       <div class="content">
         ${this._error ? `<div class="banner">${esc(this._error)}</div>` : ""}

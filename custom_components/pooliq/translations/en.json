@@ -27,7 +27,7 @@
         "title": "Pool IQ options",
         "data": {
           "scan_interval": "Polling interval (seconds)",
-          "show_panel": "Show Pool IQ in the sidebar"
+          "show_panel": "Show Pool IQ Hub in the sidebar"
         },
         "description": "Polling interval and whether the Pool IQ control panel appears in the Home Assistant sidebar."
       }
