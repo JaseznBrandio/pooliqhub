@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.4
+
+- **Live updates.** Home Assistant now subscribes to the Pool IQ cloud's live channel, the same one the app uses, so changes made in the app or on the unit show up within a second: power, purge, cell and pump status, mode, settings and faults. Polling continues every 5 minutes as a safety net, and takes over automatically if the live channel drops.
+- **Salt test result arrives live**, with the same figure the app shows.
+- **pH dosing reworked to match the app:** an on/off toggle, and while it's on, pH1 run time (min/day), pH2 prime amount (ml), and Start / Stop pH dose with the amount remaining. The prime amount is only sent when you press Start.
+- **No more bouncing back.** A change made in Home Assistant is held until the unit confirms it.
+- In Winter or Spa mode, the output control shows the output the unit actually reports.
+
 ## 0.4.3
 
 - New **Mode** selector: Normal, Winter or Spa. It follows the work mode the unit reports, so changes made in the Pool IQ app show too, and Normal takes the unit back out of winter or spa mode. Replaces the separate Winter mode and Spa mode switches.

@@ -2,7 +2,7 @@
 
 A custom integration that brings your Pool IQ Hub devices into Home Assistant. A controller hub gives you water temperatures and on/off/auto control of everything plugged into it (filter pump, lights, blowers, jet pump). A salt chlorinator gives you salt level, output, cell status, power pack temperature and full chlorinator control. Other Pool IQ Hub devices appear with the readings they report.
 
-The Pool IQ app has no official Home Assistant integration. This talks to the same JetLinks cloud backend the app uses (`47.236.42.212:8850`), logging in with Pool IQ cloud credentials and reading each device's latest reported values on a schedule. After you change something, it checks back every few seconds until the device has settled.
+The Pool IQ app has no official Home Assistant integration. This talks to the same JetLinks cloud backend the app uses (`47.236.42.212:8850`), logging in with Pool IQ cloud credentials and reading each device's latest reported values on a schedule. It also subscribes to the cloud's live channel (the same one the app uses), so changes made in the app or on the unit appear within a second. If the live channel drops, it falls back to polling until it reconnects.
 
 > **New installing this?** See [INSTALL.md](INSTALL.md) for a step-by-step guide with screenshots.
 
@@ -31,7 +31,7 @@ When the device is a salt chlorinator (it reports an output setpoint), it gets:
 
 - **Chlorinator mode** (On / Off / Auto) and an **Output setpoint** slider (0 to 100%) for the active mode
 - **Mode** (Normal / Winter / Spa), with the output control adjusting the setting for the active mode
-- **pH dosing** switch, with pH pump run time and dose settings
+- **pH dosing** on/off, with **pH1 run time** (min/day), **pH2 prime amount** (ml) and **Start / Stop pH dose** buttons. The prime amount is only sent when you press Start.
 - **Start boost** / **Stop boost** buttons, with a **Boost duration** setting (hours)
 - **Run salt test** button
 - **Special mode** (Normal, Boost, Backwash, Salt test), **Running on** (which timer is active), and **Timer 1 / Timer 2** windows

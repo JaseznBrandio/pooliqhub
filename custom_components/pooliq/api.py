@@ -112,6 +112,12 @@ class PoolIQClient:
                 raise PoolIQConnectionError(f"{method} {path} failed: {err}") from err
         raise PoolIQAuthError("Token rejected after re-login")
 
+    async def async_push_url(self) -> tuple[str, str]:
+        """Websocket URL for the cloud's live message channel, with a fresh token."""
+        token = await self.async_login()
+        base = self._host.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+        return f"{base}/api/messaging/{token}?:X_Access_Token={token}", token
+
     # ------------------------------------------------------------ readings
 
     async def async_get_properties(self) -> dict[str, dict[str, Any]]:

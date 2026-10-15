@@ -202,7 +202,8 @@ class ActiveOutputNumber(PoolIQEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        item = self._prop(self._setting()) or self._prop("OutputSetPoint") or {}
+        # The unit reports the active mode's output as its setpoint (e.g. 70 in winter).
+        item = self._prop("OutputSetPoint") or self._prop(self._setting()) or {}
         raw = item.get("numberValue", item.get("value"))
         try:
             return float(raw)

@@ -105,7 +105,7 @@ automation:
 | Pool IQ doesn't appear in **Add integration** | Check the folder path is `config/custom_components/pooliq/` and restart Home Assistant. |
 | A socket is missing | Toggle that socket once in the Pool IQ app. It appears within a minute. |
 | Values show "Unavailable" | The hub or the Pool IQ cloud is offline. Check the Pool IQ app. |
-| Changes take a few seconds | Commands go through the Pool IQ cloud to the device, and the panel waits for its confirmation. A chlorinator purges for about 15 seconds before the cell turns on; Home Assistant follows it through. |
+| Changes take a few seconds | Commands go through the Pool IQ cloud to the device. Updates normally arrive live within a second; if the live connection is down, Home Assistant polls instead. A chlorinator purges for about 15 seconds before the cell turns on. |
 | Polling interval | Default is every 30 seconds, and faster for a short while after a command or during a fault. Change it under **Pool IQ → Configure**. |
 
 For detailed logs, add this to `configuration.yaml` and restart:

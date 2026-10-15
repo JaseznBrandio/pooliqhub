@@ -21,6 +21,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import PoolIQCoordinator
+from .push import PoolIQPush
 from .panel import async_maybe_remove_panel, async_setup_panel
 
 
@@ -58,6 +59,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    push = PoolIQPush(session, client, coordinator.handle_push, coordinator.push_state)
+    push.start(lambda coro, name: entry.async_create_background_task(hass, coro, name))
+    entry.async_on_unload(push.stop)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

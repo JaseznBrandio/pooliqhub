@@ -14,7 +14,9 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import PoolIQAuthError, PoolIQClient, PoolIQConnectionError, PoolIQError
+from urllib.parse import parse_qsl
+
+from .api import SOCKET_KEYS, PoolIQAuthError, PoolIQClient, PoolIQConnectionError, PoolIQError
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +31,8 @@ FAST_WINDOW = 90  # seconds of fast polling after each command
 # checking every 10s, but never for longer than this.
 SETTLING_INTERVAL = timedelta(seconds=10)
 SETTLING_MAX = 600
+# While live updates are flowing, polling is only a safety net.
+PUSH_FALLBACK_INTERVAL = timedelta(seconds=300)
 TRIGGER_WAIT = 3  # seconds for the hub to answer a full-report request
 DEFAULT_BOOST_HOURS = 8
 DEFAULT_PH_AMOUNT = 100  # ml, pH demand/prime amount sent with Start
@@ -70,6 +74,7 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._pending: dict[str, tuple[Any, int, float]] = {}
         self.ph_amount: int = DEFAULT_PH_AMOUNT
         self._salt_test: dict[str, Any] | None = None
+        self.push_connected = False
         self._salt_checked = 0.0
         self._was_testing = False
         # Socket state is only visible when the hub reports a change, so the
@@ -231,7 +236,10 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._settling_since = self._settling_since or now
         else:
             self._settling_since = None
-        if now < self._fast_until:
+        if self.push_connected:
+            # Changes arrive live; poll only as a safety net.
+            self.update_interval = max(self._normal_interval, PUSH_FALLBACK_INTERVAL)
+        elif now < self._fast_until:
             self.update_interval = FAST_INTERVAL
         elif self._settling_since is not None and now - self._settling_since < SETTLING_MAX:
             self.update_interval = SETTLING_INTERVAL
@@ -259,6 +267,8 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _schedule_confirm(self) -> None:
         """Check back soon after a command, then keep checking quickly for a while."""
         self._fast_until = time.monotonic() + FAST_WINDOW
+        if self.push_connected:
+            return  # the unit's answer arrives on the live channel
         self.update_interval = FAST_INTERVAL
 
         async def _confirm(_now) -> None:
@@ -306,3 +316,70 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def has(self, key: str) -> bool:
         """True when the device reports this property (used to pick entities)."""
         return key in ((self.data or {}).get("properties") or {})
+
+    # ------------------------------------------------------------ live updates
+
+    @callback
+    def push_state(self, connected: bool) -> None:
+        """Live channel opened or dropped."""
+        self.push_connected = connected
+        props = (self.data or {}).get("properties") or {}
+        self._pick_interval(props)
+        if not connected:
+            # Catch up on anything missed while it was down.
+            self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
+    def handle_push(self, payload: dict[str, Any]) -> None:
+        """Apply one message from the live channel straight away."""
+        if self.data is None:
+            return
+        kind = payload.get("messageType")
+        now_ms = int(time.time() * 1000)
+        ts = payload.get("timestamp")
+        # Some replies carry the unit's own clock, which can be years off.
+        ts = ts if isinstance(ts, int) and abs(ts - now_ms) < 86_400_000 else now_ms
+
+        updates: dict[str, Any] = {}
+        sockets_changed = False
+        if kind == "REPORT_PROPERTY":
+            for key, value in (payload.get("properties") or {}).items():
+                if str(key).upper() in SOCKET_KEYS and isinstance(value, str):
+                    self._sockets[str(key).upper()] = {"ts": ts, "fields": dict(parse_qsl(value))}
+                    sockets_changed = True
+                else:
+                    updates[key] = value
+        elif kind == "WRITE_PROPERTY":
+            # A setting changed by the app (or by HA); some are never reported back.
+            for key, value in (payload.get("properties") or {}).items():
+                if key in WRITTEN_SETTINGS:
+                    updates[key] = value
+        elif kind == "EVENT" and payload.get("event") == "menuStatus":
+            data = payload.get("data") or {}
+            if data.get("menu") == "M10" and isinstance(data.get("param"), str):
+                fields = dict(parse_qsl(data["param"]))
+                try:
+                    value = int(fields.get("TDS", "0"))
+                except ValueError:
+                    value = 0
+                if value > 0 and fields.get("condition", "").strip() == "OK":
+                    self._salt_test = {"value": value, "ts": now_ms}
+                    updates["SaltTestResult"] = value
+        if not updates and not sockets_changed:
+            return
+
+        props = dict(self.data.get("properties") or {})
+        for key, value in updates.items():
+            item = {**(props.get(key) or {}), "property": key, "value": value, "timestamp": ts}
+            if isinstance(value, (int, float)):
+                item["numberValue"] = value
+            else:
+                item.pop("numberValue", None)
+            props[key] = item
+        props = self._apply_pending(props)
+        if sockets_changed:
+            self._save_cache()
+        self._pick_interval(props)
+        # Update listeners without postponing the safety-net poll.
+        self.data = {**self.data, "properties": props, "sockets": dict(self._sockets)}
+        self.async_update_listeners()
