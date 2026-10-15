@@ -252,7 +252,6 @@ CHLORINATOR_SENSORS: tuple[PoolIQSensorDescription, ...] = (
         name="pH dose remaining",
         icon="mdi:timer-sand",
         requires="pHRunLeft",
-        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     PoolIQSensorDescription(
         key="timer1",

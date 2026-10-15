@@ -357,18 +357,44 @@ class PoolIQPanel extends HTMLElement {
     const appliesTo = set && set.attributes.applies_to;
     const outLabel = appliesTo && appliesTo !== "Normal" ? `${appliesTo} output` : "Output";
 
-    const phSwitch = this._st(r.ph);
-    const phOn = phSwitch && phSwitch.state === "on";
-    const dosing = val(r.ph_status) && val(r.ph_status).state === "on";
-    const phChip = r.ph
-      ? `<button class="chip ${phOn ? "on" : ""} ${busy(r.ph)}" data-action="switch" data-entity="${esc(r.ph)}">
-          <ha-icon icon="mdi:beaker-outline"></ha-icon>
-          <span>pH dosing ${phOn ? (dosing ? "· dosing now" : "on") : "off"}</span></button>`
-      : "";
-
     const action = (eid, label, icon) => eid
       ? `<button class="act ${busy(eid)}" data-action="press" data-entity="${esc(eid)}">
            <ha-icon icon="${icon}"></ha-icon><span>${esc(label)}</span></button>` : "";
+
+    const phSwitch = this._st(r.ph);
+    const phOn = phSwitch && phSwitch.state === "on";
+    const dosing = val(r.ph_status) && val(r.ph_status).state === "on";
+    const left = val(r.ph_left);
+    const leftNum = left ? Number(left.state) : 0;
+    const running = Number.isFinite(leftNum) && leftNum > 0;
+    const stepper = (eid, label, unit, delta) => {
+      const st = val(eid);
+      if (!eid) return "";
+      return `<div class="setpoint ${busy(eid)}">
+        <span class="stat-label">${esc(label)}</span>
+        <button class="step" data-action="nudge" data-entity="${esc(eid)}" data-delta="-${delta}" aria-label="Lower">−</button>
+        <span class="set-val">${esc(st ? Math.round(Number(st.state)) : "–")}<small> ${esc(unit)}</small></span>
+        <button class="step" data-action="nudge" data-entity="${esc(eid)}" data-delta="${delta}" aria-label="Raise">+</button>
+      </div>`;
+    };
+    const phBlock = r.ph
+      ? `<div class="ph">
+          <div class="ph-head">
+            <span class="ph-title"><ha-icon icon="mdi:beaker-outline"></ha-icon> pH dosing
+              <span class="sub">${phOn ? (running ? `dosing · ${esc(left.state)} left` : dosing ? "pump running" : "on") : "off"}</span></span>
+            <button class="toggle ${phOn ? "on" : ""} ${busy(r.ph)}" data-action="switch" data-entity="${esc(r.ph)}"
+              role="switch" aria-checked="${phOn}" aria-label="pH dosing"><span class="pill"><span></span></span></button>
+          </div>
+          ${phOn ? `<div class="ph-body">
+            ${stepper(r.ph_runtime, "pH1 run time", "min/day", 1)}
+            ${stepper(r.ph_amount, "pH2 prime amount", "ml", 10)}
+            <div class="actions">
+              ${running ? action(r.ph_stop, "Stop pH dose", "mdi:stop-circle-outline")
+                        : action(r.ph_start, "Start pH dose", "mdi:play-circle-outline")}
+            </div>
+          </div>` : ""}
+        </div>`
+      : "";
 
     return `
       <h2 class="section">Chlorinator</h2>
@@ -390,7 +416,7 @@ class PoolIQPanel extends HTMLElement {
             </div>` : ""}
           </div>
         </div>
-        <div class="chips">${phChip}</div>
+        ${phBlock}
         <div class="actions">
           ${boosting ? action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline")
                      : action(r.boost_start, "Start boost", "mdi:rocket-launch")}
@@ -552,6 +578,15 @@ const STYLES = `
   .tile.on .pill { background: var(--c); }
   .tile.on .pill span { transform: translateX(18px); }
   .seg-row { display: flex; flex-direction: column; gap: 4px; }
+  .ph { border-top: 1px solid var(--divider-color, rgba(127,127,127,.25)); margin-top: 14px; padding-top: 12px; }
+  .ph-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .ph-title { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .ph-title .sub { font-weight: 400; opacity: .7; }
+  .toggle { display: flex; align-items: center; background: none; border: 0; padding: 4px; cursor: pointer; color: inherit; }
+  .toggle.on .pill { background: var(--primary-color, #03a9f4); }
+  .toggle.on .pill span { transform: translateX(18px); }
+  .ph-body { display: grid; gap: 10px; margin-top: 10px; }
+  .set-val small { font-size: 12px; opacity: .7; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 8px; padding: 2px;
     background: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); }
   .seg button { text-align: center; padding: 5px 0; border-radius: 6px; font-size: 13px; color: var(--secondary-text-color); }

@@ -31,6 +31,8 @@ SETTLING_INTERVAL = timedelta(seconds=10)
 SETTLING_MAX = 600
 TRIGGER_WAIT = 3  # seconds for the hub to answer a full-report request
 DEFAULT_BOOST_HOURS = 8
+DEFAULT_PH_AMOUNT = 100  # ml, pH demand/prime amount sent with Start
+PENDING_HOLD = 20  # seconds to keep showing a written value the device hasn't confirmed
 # Settings the chlorinator doesn't (reliably) report back after a change; their
 # current value is taken from the cloud's record of writes when that is newer.
 WRITTEN_SETTINGS = (
@@ -63,6 +65,10 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._normal_interval = timedelta(seconds=scan_interval)
         self._fast_until = 0.0
         self._settling_since: float | None = None
+        # Values just written from HA, shown until the device reports something newer:
+        # key -> (value, written_at_ms, give_up_at_monotonic)
+        self._pending: dict[str, tuple[Any, int, float]] = {}
+        self.ph_amount: int = DEFAULT_PH_AMOUNT
         self._salt_test: dict[str, Any] | None = None
         self._salt_checked = 0.0
         self._was_testing = False
@@ -140,8 +146,35 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "timestamp": self._salt_test["ts"],
                 }}
 
+        props = self._apply_pending(props)
         self._pick_interval(props)
         return {"properties": props, "sockets": dict(self._sockets)}
+
+    def forget_pending(self, *keys: str) -> None:
+        """Stop holding values that a new change makes out of date."""
+        for key in keys:
+            self._pending.pop(key, None)
+
+    def _apply_pending(self, props: dict[str, Any]) -> dict[str, Any]:
+        """Keep showing values written from HA until the device reports a newer one.
+
+        Without this, a check that started just before a change can finish just
+        after it and briefly put the old value back (a mode "bouncing back").
+        """
+        if not self._pending:
+            return props
+        now = time.monotonic()
+        props = dict(props)
+        for key, (value, written_ms, give_up) in list(self._pending.items()):
+            reported_ms = int((props.get(key) or {}).get("timestamp") or 0)
+            if now > give_up or reported_ms >= written_ms:
+                del self._pending[key]
+                continue
+            item = {**(props.get(key) or {}), "property": key, "value": value}
+            if isinstance(value, (int, float)):
+                item["numberValue"] = value
+            props[key] = item
+        return props
 
     async def _apply_recent_writes(self, props: dict[str, Any]) -> dict[str, Any]:
         """Use the newest written value for settings the device doesn't echo back."""
@@ -169,16 +202,8 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch the last salt test result when one may have just run (or every 5 min)."""
         testing = str((props.get("SpecMode") or {}).get("value", "")) == "3"
         now = time.monotonic()
-        due = (
-            self._salt_checked == 0.0
-            or testing
-            or self._was_testing
-            or now < self._fast_until
-            or now - self._salt_checked > 300
-        )
+        # One small log search per check, so a test run from the app shows up too.
         self._was_testing = testing
-        if not due:
-            return
         try:
             result = await self.client.async_get_salt_test(deep=self._salt_checked == 0.0)
         except PoolIQError as err:
@@ -254,6 +279,9 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except (PoolIQConnectionError, PoolIQAuthError) as err:
             raise HomeAssistantError(f"Pool IQ: could not set {values}: {err}") from err
 
+        written_ms = int(time.time() * 1000)
+        for key, value in {**values, **(show or {})}.items():
+            self._pending[key] = (value, written_ms, time.monotonic() + PENDING_HOLD)
         if self.data is not None:
             props = dict(self.data.get("properties") or {})
             for key, value in {**values, **(show or {})}.items():

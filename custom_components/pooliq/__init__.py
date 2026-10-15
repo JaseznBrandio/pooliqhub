@@ -82,8 +82,9 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 # Entities from earlier versions that have been replaced:
-# winter/spa switches -> Work mode select; internal_temperature -> power_pack_temp.
-_REPLACED = ("WinterMode_ctl", "SpaMode_ctl", "internal_temperature")
+# winter/spa switches -> Work mode select; internal_temperature -> power_pack_temp;
+# pH dose setting -> pH2 prime amount + Start pH dose.
+_REPLACED = ("WinterMode_ctl", "SpaMode_ctl", "internal_temperature", "pHRunAtDose_ctl")
 
 
 def _remove_replaced_entities(hass: HomeAssistant, entry: ConfigEntry, device_id: str) -> None:

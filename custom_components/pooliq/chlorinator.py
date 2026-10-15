@@ -95,6 +95,8 @@ class WorkModeSelect(PoolIQEntity, SelectEntity):
         if target == current:
             return
         props = (self.coordinator.data or {}).get("properties") or {}
+        # The output shown belongs to the old mode; let the unit's report decide it now.
+        self.coordinator.forget_pending("OutputSetPoint", "WorkMode")
         # Leave the current special mode first (the unit has one switch per mode).
         if current in MODE_SWITCH:
             switch, _ = MODE_SWITCH[current]
@@ -169,26 +171,13 @@ CHLOR_NUMBERS: tuple[ChlorNumberDescription, ...] = (
     ChlorNumberDescription(
         key="pHRunForPerDay_ctl",
         prop="pHRunForPerDay",
-        name="pH pump run time",
+        name="pH1 run time",
         icon="mdi:timer-outline",
         native_min_value=0,
         native_max_value=1440,
         native_step=1,
-        native_unit_of_measurement=UnitOfTime.MINUTES,
+        native_unit_of_measurement="min/day",
         mode=NumberMode.BOX,
-        entity_category=EntityCategory.CONFIG,
-    ),
-    ChlorNumberDescription(
-        key="pHRunAtDose_ctl",
-        prop="pHRunAtDose",
-        name="pH dose",
-        icon="mdi:beaker-outline",
-        native_min_value=0,
-        native_max_value=5000,
-        native_step=1,
-        native_unit_of_measurement="mL",
-        mode=NumberMode.BOX,
-        entity_category=EntityCategory.CONFIG,
     ),
 )
 
@@ -281,6 +270,35 @@ class BoostHours(PoolIQEntity, RestoreNumber):
         self.async_write_ha_state()
 
 
+class PhAmount(PoolIQEntity, RestoreNumber):
+    """pH2 demand / prime amount in ml. Only sent to the unit when Start pH dose is pressed."""
+
+    _attr_name = "pH2 prime amount"
+    _attr_icon = "mdi:beaker-outline"
+    _attr_native_min_value = 10
+    _attr_native_max_value = 2000
+    _attr_native_step = 10
+    _attr_native_unit_of_measurement = "mL"
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: PoolIQCoordinator) -> None:
+        super().__init__(coordinator, "ph_amount")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_number_data()
+        if last and last.native_value:
+            self.coordinator.ph_amount = int(last.native_value)
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.ph_amount)
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.coordinator.ph_amount = int(value)
+        self.async_write_ha_state()
+
+
 # -------------------------------------------------------------------- switches
 
 
@@ -351,6 +369,11 @@ class ChlorButton(PoolIQEntity, ButtonEntity):
                 {"menu": "M4", "button": "CHLORBOOST=STOP", "param": f"RUNHOURS={hours}"},
                 wait=False,
             )
+        elif key == "ph_start":
+            # Same as the app: sending the amount starts a dose run.
+            await self.coordinator.async_write({"pHRunAtDose": self.coordinator.ph_amount})
+        elif key == "ph_stop":
+            await self.coordinator.async_write({"pHRunLeft": 0})
         elif key == "salt_test":
             # Opening the salt test screen (menu M10) runs the test.
             await self.coordinator.async_invoke(
@@ -362,6 +385,8 @@ CHLOR_BUTTONS: tuple[ButtonEntityDescription, ...] = (
     ButtonEntityDescription(key="boost_start", name="Start boost", icon="mdi:rocket-launch"),
     ButtonEntityDescription(key="boost_stop", name="Stop boost", icon="mdi:stop-circle-outline"),
     ButtonEntityDescription(key="salt_test", name="Run salt test", icon="mdi:shaker-outline"),
+    ButtonEntityDescription(key="ph_start", name="Start pH dose", icon="mdi:play-circle-outline"),
+    ButtonEntityDescription(key="ph_stop", name="Stop pH dose", icon="mdi:stop-circle-outline"),
 )
 
 
@@ -384,6 +409,8 @@ def chlor_numbers(c: PoolIQCoordinator) -> list[NumberEntity]:
     if is_chlorinator(c):
         ents.insert(0, ActiveOutputNumber(c))
         ents.append(BoostHours(c))
+        if c.has("pHSwitch"):
+            ents.append(PhAmount(c))
     return ents
 
 
