@@ -289,9 +289,26 @@ class PoolIQPanel extends HTMLElement {
         </button>`;
     };
 
+    // Salt test runs from a button right next to the salt reading.
+    const withTest = (html) => html && r.salt_test
+      ? `<div class="stat-with-act">${html}
+          <button class="act small ${this._busy.has(r.salt_test) ? "busy" : ""}" data-action="press"
+            data-entity="${esc(r.salt_test)}"><ha-icon icon="mdi:shaker-outline"></ha-icon><span>Run test</span></button>
+        </div>`
+      : html;
+
     const stats = [
-      stat(r.salt, "Salt", "mdi:shaker-outline"),
-      stat(r.salt_test_result, "Last salt test", "mdi:shaker-outline"),
+      // The salt test result is the figure the unit and app show; the live reading
+      // is only a fallback until the first test result arrives.
+      // Salt is the salt test result only (the figure the unit and app show).
+      r.salt_test_result
+        ? withTest(this._value(r.salt_test_result)
+            ? stat(r.salt_test_result, "Salt", "mdi:shaker-outline")
+            : `<button class="stat untested" data-action="more-info" data-entity="${esc(r.salt_test_result)}">
+                 <ha-icon icon="mdi:shaker-outline"></ha-icon>
+                 <div><div class="stat-label">Salt</div><div class="stat-value">Not tested</div></div>
+               </button>`)
+        : stat(r.salt, "Salt", "mdi:shaker-outline"),
       stat(r.output, "Chlorinator output", "mdi:water-percent"),
       stat(r.cell, "Cell", "mdi:flash-outline"),
       stat(r.pump, "Chlorinator pump", "mdi:pump"),
@@ -367,14 +384,17 @@ class PoolIQPanel extends HTMLElement {
     const left = val(r.ph_left);
     const leftNum = left ? Number(left.state) : 0;
     const running = Number.isFinite(leftNum) && leftNum > 0;
-    const stepper = (eid, label, unit, delta) => {
-      const st = val(eid);
+    // Compact stepper: value and unit on top, label underneath.
+    const mini = (eid, label, unit, delta) => {
       if (!eid) return "";
-      return `<div class="setpoint ${busy(eid)}">
-        <span class="stat-label">${esc(label)}</span>
-        <button class="step" data-action="nudge" data-entity="${esc(eid)}" data-delta="-${delta}" aria-label="Lower">−</button>
-        <span class="set-val">${esc(st ? Math.round(Number(st.state)) : "–")}<small> ${esc(unit)}</small></span>
-        <button class="step" data-action="nudge" data-entity="${esc(eid)}" data-delta="${delta}" aria-label="Raise">+</button>
+      const st = val(eid);
+      return `<div class="mini ${busy(eid)}">
+        <div class="mini-row">
+          <button class="step sm" data-action="nudge" data-entity="${esc(eid)}" data-delta="-${delta}" aria-label="Lower ${esc(label)}">−</button>
+          <span class="mini-val">${esc(st ? Math.round(Number(st.state)) : "–")}<small> ${esc(unit)}</small></span>
+          <button class="step sm" data-action="nudge" data-entity="${esc(eid)}" data-delta="${delta}" aria-label="Raise ${esc(label)}">+</button>
+        </div>
+        <div class="stat-label">${esc(label)}</div>
       </div>`;
     };
     const phBlock = r.ph
@@ -386,9 +406,9 @@ class PoolIQPanel extends HTMLElement {
               role="switch" aria-checked="${phOn}" aria-label="pH dosing"><span class="pill"><span></span></span></button>
           </div>
           ${phOn ? `<div class="ph-body">
-            ${stepper(r.ph_runtime, "pH1 run time", "min/day", 1)}
-            ${stepper(r.ph_amount, "pH2 prime amount", "ml", 10)}
-            <div class="actions">
+            ${mini(r.ph_runtime, "pH1 run time", "min/day", 1)}
+            ${mini(r.ph_amount, "pH2 prime amount", "ml", 10)}
+            <div class="ph-go">
               ${running ? action(r.ph_stop, "Stop pH dose", "mdi:stop-circle-outline")
                         : action(r.ph_start, "Start pH dose", "mdi:play-circle-outline")}
             </div>
@@ -414,14 +434,13 @@ class PoolIQPanel extends HTMLElement {
               <span class="set-val">${esc(set ? Math.round(Number(set.state)) : "–")}%</span>
               <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="5" aria-label="Raise">+</button>
             </div>` : ""}
+            <div class="wide">
+              ${boosting ? action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline")
+                         : action(r.boost_start, "Start boost", "mdi:rocket-launch")}
+            </div>
           </div>
         </div>
         ${phBlock}
-        <div class="actions">
-          ${boosting ? action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline")
-                     : action(r.boost_start, "Start boost", "mdi:rocket-launch")}
-          ${action(r.salt_test, "Run salt test", "mdi:shaker-outline")}
-        </div>
       </div>`;
   }
 
@@ -585,7 +604,25 @@ const STYLES = `
   .toggle { display: flex; align-items: center; background: none; border: 0; padding: 4px; cursor: pointer; color: inherit; }
   .toggle.on .pill { background: var(--primary-color, #03a9f4); }
   .toggle.on .pill span { transform: translateX(18px); }
-  .ph-body { display: grid; gap: 10px; margin-top: 10px; }
+  .ph-body { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 12px; }
+  .mini { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1 1 140px; }
+  .mini-row { display: flex; align-items: center; gap: 10px; }
+  .mini-val { font-size: 20px; font-weight: 500; min-width: 72px; text-align: center; white-space: nowrap; }
+  @media (max-width: 520px) {
+    .ph-body { gap: 12px 8px; }
+    .mini-row { gap: 6px; }
+    .ph-body .ph-go { flex-basis: 100%; margin-left: 0; }
+    .ph-body .ph-go .act { width: 100%; justify-content: center; box-sizing: border-box; }
+  }
+  .mini-val small { font-size: 12px; opacity: .7; font-weight: 400; }
+  .step.sm { width: 30px; height: 30px; line-height: 30px; font-size: 18px; }
+  .ph-go { flex: 0 0 auto; margin-left: auto; }
+  .wide .act { width: 100%; justify-content: center; box-sizing: border-box; }
+  .stat-with-act { display: flex; align-items: center; gap: 6px; grid-column: span 2; }
+  .stat-with-act .stat { flex: 1; min-width: 0; }
+  .stat.untested .stat-value { opacity: .65; font-style: italic; white-space: nowrap; }
+  .act.small { padding: 6px 10px; font-size: 13px; flex: none; }
+  .act.small ha-icon { --mdc-icon-size: 16px; }
   .set-val small { font-size: 12px; opacity: .7; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 8px; padding: 2px;
     background: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); }

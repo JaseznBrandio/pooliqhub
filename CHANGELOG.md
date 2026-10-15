@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.5
+
+- **Salt** on the Pool IQ page is the salt test result, the same figure as the app. It never shows the unit's live reading; before a test it shows "Not tested". A **Run test** button sits right next to it.
+- **Start boost** moved under the output control in the Chlorinator section.
+- **pH dosing** laid out on one line: pH1 run time (min/day) and pH2 prime amount (ml), each with the value on top and its label below, then Start / Stop pH dose.
+- Layout tuned for phones.
+
 ## 0.4.4
 
 - **Live updates.** Home Assistant now subscribes to the Pool IQ cloud's live channel, the same one the app uses, so changes made in the app or on the unit show up within a second: power, purge, cell and pump status, mode, settings and faults. Polling continues every 5 minutes as a safety net, and takes over automatically if the live channel drops.
