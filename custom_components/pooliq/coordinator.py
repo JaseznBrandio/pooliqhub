@@ -31,6 +31,12 @@ SETTLING_INTERVAL = timedelta(seconds=10)
 SETTLING_MAX = 600
 TRIGGER_WAIT = 3  # seconds for the hub to answer a full-report request
 DEFAULT_BOOST_HOURS = 8
+# Settings the chlorinator doesn't (reliably) report back after a change; their
+# current value is taken from the cloud's record of writes when that is newer.
+WRITTEN_SETTINGS = (
+    "WinterMode", "SpaMode", "pHSwitch", "WinterModeSet", "SpaModeSet",
+    "pHRunForPerDay", "pHRunAtDose", "ReriodSet",
+)
 
 
 class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -102,10 +108,14 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except PoolIQConnectionError as err:
             raise UpdateFailed(str(err)) from err
 
+        chlorinator = "OutputSetPoint" in props
         try:
-            # First start with nothing cached: look further back in the log.
-            deep = self.data is None and not self._sockets
-            reports = await self.client.async_get_socket_reports(deep=deep)
+            if chlorinator and not self._sockets:
+                reports = {}  # a chlorinator has no switched sockets
+            else:
+                # First start with nothing cached: look further back in the log.
+                deep = self.data is None and not self._sockets
+                reports = await self.client.async_get_socket_reports(deep=deep)
         except PoolIQError as err:
             _LOGGER.debug("Socket report read failed, keeping cached state: %s", err)
             reports = {}
@@ -119,7 +129,8 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if changed:
             self._save_cache()
 
-        if "OutputSetPoint" in props:
+        if chlorinator:
+            props = await self._apply_recent_writes(props)
             await self._update_salt_test(props)
             if self._salt_test:
                 props = {**props, "SaltTestResult": {
@@ -131,6 +142,28 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._pick_interval(props)
         return {"properties": props, "sockets": dict(self._sockets)}
+
+    async def _apply_recent_writes(self, props: dict[str, Any]) -> dict[str, Any]:
+        """Use the newest written value for settings the device doesn't echo back."""
+        try:
+            writes = await self.client.async_get_recent_writes()
+        except PoolIQError as err:
+            _LOGGER.debug("Write log read failed: %s", err)
+            return props
+        props = dict(props)
+        done: set[str] = set()
+        for ts, values in writes:  # newest first
+            for key, value in values.items():
+                if key not in WRITTEN_SETTINGS or key in done:
+                    continue
+                done.add(key)
+                cur = props.get(key) or {}
+                if ts > int(cur.get("timestamp") or 0):
+                    item = {**cur, "property": key, "value": value, "timestamp": ts}
+                    if isinstance(value, (int, float)):
+                        item["numberValue"] = value
+                    props[key] = item
+        return props
 
     async def _update_salt_test(self, props: dict[str, Any]) -> None:
         """Fetch the last salt test result when one may have just run (or every 5 min)."""
@@ -208,8 +241,14 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         async_call_later(self.hass, CONFIRM_DELAY, _confirm)
 
-    async def async_write(self, values: dict[str, Any]) -> None:
-        """Write device settings, show them immediately, confirm shortly after."""
+    async def async_write(
+        self, values: dict[str, Any], show: dict[str, Any] | None = None
+    ) -> None:
+        """Write device settings, show them immediately, confirm shortly after.
+
+        `show` holds extra values to display straight away (e.g. the work mode a
+        write will cause), until the device's own report replaces them.
+        """
         try:
             await self.client.async_write_properties(values)
         except (PoolIQConnectionError, PoolIQAuthError) as err:
@@ -217,7 +256,7 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if self.data is not None:
             props = dict(self.data.get("properties") or {})
-            for key, value in values.items():
+            for key, value in {**values, **(show or {})}.items():
                 item = dict(props.get(key) or {"property": key})
                 item["value"] = value
                 if isinstance(value, (int, float)):

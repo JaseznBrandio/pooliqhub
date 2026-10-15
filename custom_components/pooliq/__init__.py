@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import PoolIQClient
@@ -50,6 +51,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     )
 
+    _remove_replaced_entities(hass, entry, client.device_id)
+
     coordinator = PoolIQCoordinator(hass, entry, client, scan_interval)
     await coordinator.async_load_cache()
     await coordinator.async_config_entry_first_refresh()
@@ -76,3 +79,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload when options (e.g. scan interval) change."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+# Entities from earlier versions that have been replaced:
+# winter/spa switches -> Work mode select; internal_temperature -> power_pack_temp.
+_REPLACED = ("WinterMode_ctl", "SpaMode_ctl", "internal_temperature")
+
+
+def _remove_replaced_entities(hass: HomeAssistant, entry: ConfigEntry, device_id: str) -> None:
+    registry = er.async_get(hass)
+    for ent in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if ent.unique_id in {f"{device_id}_{key}" for key in _REPLACED}:
+            registry.async_remove(ent.entity_id)

@@ -58,6 +58,61 @@ CHLOR_SELECTS: tuple[ChlorSelectDescription, ...] = (
 )
 
 
+WORK_MODES = {"Normal": "NULL", "Winter": "WINTER", "Spa": "SPA"}
+# Switch property and its output setting for each special work mode.
+MODE_SWITCH = {"WINTER": ("WinterMode", "WinterModeSet"), "SPA": ("SpaMode", "SpaModeSet")}
+
+
+def active_mode(coordinator: PoolIQCoordinator) -> str:
+    """NULL (normal), WINTER or SPA, from what the unit reports."""
+    props = (coordinator.data or {}).get("properties") or {}
+    mode = str((props.get("WorkMode") or {}).get("value", "NULL")).upper()
+    return mode if mode in MODE_SWITCH else "NULL"
+
+
+class WorkModeSelect(PoolIQEntity, SelectEntity):
+    """Normal / Winter / Spa. Shows the unit's reported work mode, so app changes show too."""
+
+    _attr_icon = "mdi:pool"
+    _attr_options = list(WORK_MODES)
+    _attr_name = "Work mode"
+
+    def __init__(self, coordinator: PoolIQCoordinator) -> None:
+        super().__init__(coordinator, "WorkMode_ctl")
+
+    @property
+    def current_option(self) -> str | None:
+        props = (self.coordinator.data or {}).get("properties") or {}
+        raw = str((props.get("WorkMode") or {}).get("value", "")).upper()
+        for label, value in WORK_MODES.items():
+            if raw == value:
+                return label
+        return None  # boost, salt test etc. are shown by Special mode
+
+    async def async_select_option(self, option: str) -> None:
+        target = WORK_MODES[option]
+        current = active_mode(self.coordinator)
+        if target == current:
+            return
+        props = (self.coordinator.data or {}).get("properties") or {}
+        # Leave the current special mode first (the unit has one switch per mode).
+        if current in MODE_SWITCH:
+            switch, _ = MODE_SWITCH[current]
+            show = {"WorkMode": "NULL"} if target == "NULL" else None
+            await self.coordinator.async_write({switch: "OFF"}, show=show)
+        elif target == "NULL":
+            # Unknown starting point: make sure both are off.
+            await self.coordinator.async_write({"WinterMode": "OFF"}, show={"WorkMode": "NULL"})
+            await self.coordinator.async_write({"SpaMode": "OFF"})
+        if target in MODE_SWITCH:
+            switch, set_key = MODE_SWITCH[target]
+            show = {"WorkMode": target}
+            level = (props.get(set_key) or {}).get("value")
+            if level is not None:
+                show["OutputSetPoint"] = level
+            await self.coordinator.async_write({switch: "ON"}, show=show)
+
+
 class ChlorSelect(PoolIQEntity, SelectEntity):
     entity_description: ChlorSelectDescription
 
@@ -89,17 +144,6 @@ class ChlorNumberDescription(NumberEntityDescription):
 
 
 CHLOR_NUMBERS: tuple[ChlorNumberDescription, ...] = (
-    ChlorNumberDescription(
-        key="OutputSetPoint_ctl",
-        prop="OutputSetPoint",
-        name="Output setpoint",
-        icon="mdi:water-percent",
-        native_min_value=0,
-        native_max_value=100,
-        native_step=1,
-        native_unit_of_measurement=PERCENTAGE,
-        mode=NumberMode.SLIDER,
-    ),
     ChlorNumberDescription(
         key="WinterModeSet_ctl",
         prop="WinterModeSet",
@@ -147,6 +191,44 @@ CHLOR_NUMBERS: tuple[ChlorNumberDescription, ...] = (
         entity_category=EntityCategory.CONFIG,
     ),
 )
+
+
+class ActiveOutputNumber(PoolIQEntity, NumberEntity):
+    """Output for the current work mode: normal setpoint, winter output or spa output."""
+
+    _attr_name = "Output setpoint"
+    _attr_icon = "mdi:water-percent"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 100
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: PoolIQCoordinator) -> None:
+        super().__init__(coordinator, "OutputSetPoint_ctl")
+
+    def _setting(self) -> str:
+        mode = active_mode(self.coordinator)
+        return MODE_SWITCH[mode][1] if mode in MODE_SWITCH else "OutputSetPoint"
+
+    @property
+    def native_value(self) -> float | None:
+        item = self._prop(self._setting()) or self._prop("OutputSetPoint") or {}
+        raw = item.get("numberValue", item.get("value"))
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"applies_to": {"OutputSetPoint": "Normal", "WinterModeSet": "Winter",
+                               "SpaModeSet": "Spa"}[self._setting()]}
+
+    async def async_set_native_value(self, value: float) -> None:
+        level = int(round(value))
+        await self.coordinator.async_write({self._setting(): level},
+                                           show={"OutputSetPoint": level})
 
 
 class ChlorNumber(PoolIQEntity, NumberEntity):
@@ -210,10 +292,6 @@ class ChlorSwitchDescription(SwitchEntityDescription):
 
 
 CHLOR_SWITCHES: tuple[ChlorSwitchDescription, ...] = (
-    ChlorSwitchDescription(key="WinterMode_ctl", prop="WinterMode", name="Winter mode",
-                           icon="mdi:snowflake"),
-    ChlorSwitchDescription(key="SpaMode_ctl", prop="SpaMode", name="Spa mode",
-                           icon="mdi:hot-tub"),
     ChlorSwitchDescription(key="pHSwitch_ctl", prop="pHSwitch", name="pH dosing",
                            icon="mdi:beaker-outline"),
 )
@@ -294,13 +372,17 @@ def is_chlorinator(coordinator: PoolIQCoordinator) -> bool:
     return coordinator.has(CHLORINATOR_MARKER)
 
 
-def chlor_selects(c: PoolIQCoordinator) -> list[ChlorSelect]:
-    return [ChlorSelect(c, d) for d in CHLOR_SELECTS if c.has(d.prop)]
+def chlor_selects(c: PoolIQCoordinator) -> list[SelectEntity]:
+    ents: list[SelectEntity] = [ChlorSelect(c, d) for d in CHLOR_SELECTS if c.has(d.prop)]
+    if is_chlorinator(c) and c.has("WorkMode"):
+        ents.insert(1, WorkModeSelect(c))
+    return ents
 
 
 def chlor_numbers(c: PoolIQCoordinator) -> list[NumberEntity]:
     ents: list[NumberEntity] = [ChlorNumber(c, d) for d in CHLOR_NUMBERS if c.has(d.prop)]
     if is_chlorinator(c):
+        ents.insert(0, ActiveOutputNumber(c))
         ents.append(BoostHours(c))
     return ents
 

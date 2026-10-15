@@ -29,8 +29,8 @@ In Auto, the switch shows whether the timer currently has the socket on. The tim
 
 When the device is a salt chlorinator (it reports an output setpoint), it gets:
 
-- **Chlorinator mode** (On / Off / Auto) and an **Output setpoint** slider (0 to 100%)
-- **Winter mode** and **Spa mode** switches, with their own output settings
+- **Chlorinator mode** (On / Off / Auto) and an **Output setpoint** slider (0 to 100%) for the active mode
+- **Mode** (Normal / Winter / Spa), with the output control adjusting the setting for the active mode
 - **pH dosing** switch, with pH pump run time and dose settings
 - **Start boost** / **Stop boost** buttons, with a **Boost duration** setting (hours)
 - **Run salt test** button

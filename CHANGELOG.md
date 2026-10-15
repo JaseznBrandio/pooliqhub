@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3
+
+- New **Mode** selector: Normal, Winter or Spa. It follows the work mode the unit reports, so changes made in the Pool IQ app show too, and Normal takes the unit back out of winter or spa mode. Replaces the separate Winter mode and Spa mode switches.
+- The output control now adjusts the setting for the active mode: normal output, winter output or spa output.
+- Settings the unit doesn't report back (pH dosing, winter and spa output, pH run time and dose, timer cycle) are now read from the Pool IQ cloud's record of changes. Changes made in the app show in Home Assistant, and changes made in Home Assistant no longer flip back.
+- pH dosing shows when the dosing pump is running.
+- Chlorinators no longer query socket history they don't have, so each check is quicker.
+
 ## 0.4.2
 
 - Boost start and stop no longer show a "Timeout" error. The unit carries them out but never sends a reply, so Home Assistant now sends the command and confirms it from the unit's status instead of waiting 10 seconds.

@@ -338,6 +338,7 @@ class PoolIQPanel extends HTMLElement {
     const cell = val(r.cell);
     const out = this._fmtNumber(r.output);
     const set = val(r.setpoint);
+    const work = val(r.work_mode_ctl);
     const busy = (eid) => (eid && this._busy.has(eid)) ? "busy" : "";
     const specialText = special ? special.state : "Normal";
     const boosting = specialText === "Boost";
@@ -346,19 +347,24 @@ class PoolIQPanel extends HTMLElement {
     if (specialText !== "Normal") status = specialText;
     else if (cell) status += ` · cell ${cell.state.toLowerCase()}`;
 
-    const seg = r.mode
-      ? `<div class="seg" role="group" aria-label="Chlorinator mode">${["On", "Off", "Auto"].map(
-          (m) => `<button class="${mode && mode.state === m ? "sel" : ""}" data-action="mode"
-                   data-entity="${esc(r.mode)}" data-option="${m}">${m}</button>`).join("")}</div>`
+    const segment = (eid, label, options) => eid
+      ? `<div class="seg-row"><span class="stat-label">${esc(label)}</span>
+          <div class="seg ${busy(eid)}" role="group" aria-label="${esc(label)}">${options.map(
+          (m) => `<button class="${val(eid) && val(eid).state === m ? "sel" : ""}" data-action="mode"
+                   data-entity="${esc(eid)}" data-option="${m}">${m}</button>`).join("")}</div></div>`
       : "";
 
-    const chip = (eid, label, icon) => {
-      if (!eid) return "";
-      const st = this._st(eid);
-      const on = st && st.state === "on";
-      return `<button class="chip ${on ? "on" : ""} ${busy(eid)}" data-action="switch" data-entity="${esc(eid)}">
-        <ha-icon icon="${icon}"></ha-icon><span>${esc(label)}</span></button>`;
-    };
+    const appliesTo = set && set.attributes.applies_to;
+    const outLabel = appliesTo && appliesTo !== "Normal" ? `${appliesTo} output` : "Output";
+
+    const phSwitch = this._st(r.ph);
+    const phOn = phSwitch && phSwitch.state === "on";
+    const dosing = val(r.ph_status) && val(r.ph_status).state === "on";
+    const phChip = r.ph
+      ? `<button class="chip ${phOn ? "on" : ""} ${busy(r.ph)}" data-action="switch" data-entity="${esc(r.ph)}">
+          <ha-icon icon="mdi:beaker-outline"></ha-icon>
+          <span>pH dosing ${phOn ? (dosing ? "· dosing now" : "on") : "off"}</span></button>`
+      : "";
 
     const action = (eid, label, icon) => eid
       ? `<button class="act ${busy(eid)}" data-action="press" data-entity="${esc(eid)}">
@@ -374,20 +380,17 @@ class PoolIQPanel extends HTMLElement {
             <div class="sub">${esc(status)}</div>
           </button>
           <div class="chlor-ctl">
-            ${seg}
+            ${segment(r.mode, "Power", ["On", "Off", "Auto"])}
+            ${segment(r.work_mode_ctl, "Mode", ["Normal", "Winter", "Spa"])}
             ${r.setpoint ? `<div class="setpoint ${busy(r.setpoint)}">
-              <span class="stat-label">Setpoint</span>
+              <span class="stat-label">${esc(outLabel)}</span>
               <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="-5" aria-label="Lower">−</button>
               <span class="set-val">${esc(set ? Math.round(Number(set.state)) : "–")}%</span>
               <button class="step" data-action="nudge" data-entity="${esc(r.setpoint)}" data-delta="5" aria-label="Raise">+</button>
             </div>` : ""}
           </div>
         </div>
-        <div class="chips">
-          ${chip(r.winter, "Winter mode", "mdi:snowflake")}
-          ${chip(r.spa, "Spa mode", "mdi:hot-tub")}
-          ${chip(r.ph, "pH dosing", "mdi:beaker-outline")}
-        </div>
+        <div class="chips">${phChip}</div>
         <div class="actions">
           ${boosting ? action(r.boost_stop, "Stop boost", "mdi:stop-circle-outline")
                      : action(r.boost_start, "Start boost", "mdi:rocket-launch")}
@@ -548,6 +551,7 @@ const STYLES = `
   .pill span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
   .tile.on .pill { background: var(--c); }
   .tile.on .pill span { transform: translateX(18px); }
+  .seg-row { display: flex; flex-direction: column; gap: 4px; }
   .seg { display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 8px; padding: 2px;
     background: color-mix(in srgb, var(--secondary-text-color) 10%, transparent); }
   .seg button { text-align: center; padding: 5px 0; border-radius: 6px; font-size: 13px; color: var(--secondary-text-color); }

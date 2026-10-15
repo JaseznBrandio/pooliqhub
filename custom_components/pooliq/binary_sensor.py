@@ -36,7 +36,6 @@ BINARY_SENSORS: tuple[PoolIQBinaryDescription, ...] = (
         name="pH dosing pump",
         device_class=BinarySensorDeviceClass.RUNNING,
         icon="mdi:pump",
-        entity_registry_enabled_default=False,
     ),
 )
 

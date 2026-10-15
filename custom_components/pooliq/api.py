@@ -163,6 +163,38 @@ class PoolIQClient:
             found = self._parse_socket_reports(await self._log_rows(unfiltered))
         return found
 
+    async def async_get_recent_writes(self) -> list[tuple[int, dict[str, Any]]]:
+        """Settings recently written to the device, by the app or by Home Assistant.
+
+        The device doesn't report some settings back (winter/spa switch, pH dosing),
+        so the cloud's record of writes is the only way to see an app-side change.
+        Returns [(timestamp_ms, {prop: value})], newest first.
+        """
+        rows = await self._log_rows({
+            "pageIndex": 0,
+            "pageSize": 30,
+            "sorts[0].name": "timestamp",
+            "sorts[0].order": "desc",
+            "terms[0].column": "content",
+            "terms[0].termType": "like",
+            "terms[0].value": "%WRITE_PROPERTY%",
+        })
+        writes: list[tuple[int, dict[str, Any]]] = []
+        for row in rows:
+            content = row.get("content") if isinstance(row, dict) else None
+            if isinstance(content, str):
+                try:
+                    content = json.loads(content)
+                except ValueError:
+                    continue
+            if not isinstance(content, dict) or content.get("messageType") != "WRITE_PROPERTY":
+                continue
+            props = content.get("properties")
+            if isinstance(props, dict) and props:
+                writes.append((int(row.get("createTime") or row.get("timestamp") or 0), props))
+        writes.sort(key=lambda w: w[0], reverse=True)
+        return writes
+
     async def async_get_salt_test(self, deep: bool = False) -> dict[str, Any] | None:
         """Result of the most recent salt test, as the unit shows it at the end of the test.
 

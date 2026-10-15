@@ -79,7 +79,7 @@ Socket names come from the names set in the Pool IQ app. Sockets with the same n
 
 ### More than one Pool IQ device
 
-Each Pool IQ Hub device (controller hub, chlorinator and so on) has its own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ sidebar page. A chlorinator gets a **Chlorinator** section with mode, output setpoint, winter and spa modes, pH dosing, boost and salt test.
+Each Pool IQ Hub device (controller hub, chlorinator and so on) has its own device ID. Add the integration once per device (**Add integration → Pool IQ** again, with the other device ID). Both appear on the same Pool IQ sidebar page. A chlorinator gets a **Chlorinator** section with power (On / Off / Auto), mode (Normal / Winter / Spa), output for the active mode, pH dosing, boost and salt test.
 
 ## Step 5 (optional): Automations
 
