@@ -693,7 +693,7 @@ const STYLES = `
   .mc ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); margin-bottom: 2px; }
   .mc-label { font-size: 12px; color: var(--secondary-text-color); }
   .mc-value { font-size: 17px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  .mc.warn .mc-value { color: var(--error-color, #db4437); }
+  .mc.warn .mc-value { color: var(--error-color, #db4437); white-space: normal; overflow: visible; }
   .mc.salt { grid-column: span 2; gap: 8px; }
   .mc-main { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; }
   .act.full { width: 100%; justify-content: center; box-sizing: border-box; }

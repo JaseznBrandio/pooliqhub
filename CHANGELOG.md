@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.9
+
+- **Status shows every fault in plain words**, using the Pool IQ Hub fault table: high salt, low salt, extremely high salt, low flow, no output, low output, internal temp high, transformer temp high, water temp high, water temp low, water temp rising fast and check ioniser rods. When several faults happen at once they're all listed, for example "Low salt, Water temp low".
+
 ## 0.4.8
 
 - The sidebar item is now called **Pool IQ Hub**.

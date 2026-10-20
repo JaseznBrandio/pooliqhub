@@ -37,7 +37,7 @@ When the device is a salt chlorinator (it reports an output setpoint), it gets:
 - **Special mode** (Normal, Boost, Backwash, Salt test), **Running on** (which timer is active), and **Timer 1 / Timer 2** windows
 - **Power pack temperature** (°C)
 - **Salt reading** (ppm): the salt test result, the figure the unit and the Pool IQ app show at the end of a salt test.
-- **Status**: any fault in plain words (for example "Low flow"), or "Code N" for codes not yet known. The raw number is in the **Fault code** sensor.
+- **Status**: "OK", or every active fault in plain words, for example "Low flow" or "Low salt, Water temp low". The raw number is in the **Fault code** sensor.
 
 Backwash is a multi-step routine on the unit and is left to the Pool IQ app.
 
