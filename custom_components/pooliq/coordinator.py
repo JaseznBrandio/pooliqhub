@@ -36,7 +36,7 @@ PUSH_FALLBACK_INTERVAL = timedelta(seconds=300)
 TRIGGER_WAIT = 3  # seconds for the hub to answer a full-report request
 DEFAULT_BOOST_HOURS = 8
 DEFAULT_PH_AMOUNT = 100  # ml, pH demand/prime amount sent with Start
-PENDING_HOLD = 20  # seconds to keep showing a written value the device hasn't confirmed
+PENDING_HOLD = 20  # seconds to keep showing a change the unit hasn't confirmed yet
 # Settings the chlorinator doesn't (reliably) report back after a change; their
 # current value is taken from the cloud's record of writes when that is newer.
 WRITTEN_SETTINGS = (
@@ -69,9 +69,17 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._normal_interval = timedelta(seconds=scan_interval)
         self._fast_until = 0.0
         self._settling_since: float | None = None
-        # Values just written from HA, shown until the device reports something newer:
-        # key -> (value, written_at_ms, give_up_at_monotonic)
-        self._pending: dict[str, tuple[Any, int, float]] = {}
+        # Changes made from HA, shown straight away and held until the unit reports
+        # the same value (confirmed) or PENDING_HOLD passes; after that whatever the
+        # unit last reported is shown. Comparing values, not clocks, means a stale
+        # report can't bounce a change back, and a change the unit didn't carry out
+        # can't stay on screen.
+        #   property -> (value, give_up_at_monotonic)
+        self._pending: dict[str, tuple[Any, float]] = {}
+        #   SOCKETn -> (mode, give_up_at_monotonic)
+        self._socket_hold: dict[str, tuple[str, float]] = {}
+        # Last properties as the unit reported them (before any held change).
+        self._raw: dict[str, dict[str, Any]] = {}
         self.ph_amount: int = DEFAULT_PH_AMOUNT
         self._salt_test: dict[str, Any] | None = None
         self.push_connected = False
@@ -95,6 +103,9 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @property
     def sockets(self) -> dict[str, dict[str, Any]]:
+        """Socket state as shown: what the hub reported, plus changes not yet confirmed."""
+        if self.data is not None and "sockets" in self.data:
+            return self.data["sockets"]
         return self._sockets
 
     async def async_load_cache(self) -> None:
@@ -217,49 +228,97 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "timestamp": self._salt_test["ts"],
                 }}
 
-        props = self._apply_pending(props)
+        self._raw = props
         if chlorinator:
-            await self._ask_boost_remaining(props)
+            await self._ask_boost_remaining(self._apply_pending(props))
+        return self._build()
+
+    # ------------------------------------------------------- held changes
+
+    @staticmethod
+    def _norm(value: Any) -> Any:
+        text = str(value).strip().upper()
+        try:
+            return float(text)
+        except ValueError:
+            return text
+
+    @classmethod
+    def _same(cls, a: Any, b: Any) -> bool:
+        na, nb = cls._norm(a), cls._norm(b)
+        if na == nb:
+            return True
+        # Some switches report 1/0 where the app writes ON/OFF.
+        return {na, nb} in ({1.0, "ON"}, {0.0, "OFF"})
+
+    def _apply_pending(self, props: dict[str, Any]) -> dict[str, Any]:
+        """Reported properties with unconfirmed changes from HA on top."""
+        if not self._pending:
+            return props
+        now = time.monotonic()
+        props = dict(props)
+        for key, (value, give_up) in list(self._pending.items()):
+            reported = (props.get(key) or {}).get("value")
+            if now > give_up or (reported is not None and self._same(reported, value)):
+                del self._pending[key]  # confirmed, or show what the unit reports
+                continue
+            item = {**(props.get(key) or {}), "property": key, "value": value}
+            if isinstance(value, (int, float)):
+                item["numberValue"] = value
+            else:
+                item.pop("numberValue", None)
+            props[key] = item
+        return props
+
+    def _apply_socket_holds(self) -> dict[str, dict[str, Any]]:
+        """Reported socket state with unconfirmed changes from HA on top."""
+        shown = dict(self._sockets)
+        now = time.monotonic()
+        for sock, (mode, give_up) in list(self._socket_hold.items()):
+            fields = (self._sockets.get(sock) or {}).get("fields") or {}
+            if now > give_up or str(fields.get("SW", "")).upper() == mode:
+                del self._socket_hold[sock]
+                continue
+            cur = self._sockets.get(sock) or {"ts": 0, "fields": {}}
+            shown[sock] = {"ts": cur["ts"], "fields": {**cur["fields"], "SW": mode}}
+        return shown
+
+    def _build(self) -> dict[str, Any]:
+        props = self._apply_pending(self._raw)
+        if "OutputSetPoint" in props:
             props = self._inject_boost(props)
         self._pick_interval(props)
-        return {"properties": props, "sockets": dict(self._sockets)}
+        return {"properties": props, "sockets": self._apply_socket_holds()}
+
+    @callback
+    def _publish(self) -> None:
+        """Show the current state now, without postponing the safety-net poll."""
+        if self.data is None:
+            return
+        self.data = self._build()
+        self.async_update_listeners()
+
+    @callback
+    def _expire_later(self) -> None:
+        """When a hold runs out unconfirmed, show what the unit actually reported."""
+
+        @callback
+        def _expired(_now) -> None:
+            self._publish()
+
+        async_call_later(self.hass, PENDING_HOLD + 0.5, _expired)
 
     @callback
     def hold(self, key: str, value: Any) -> None:
-        """Show a value straight away and keep it until the unit reports something newer."""
-        self._pending[key] = (value, int(time.time() * 1000), time.monotonic() + PENDING_HOLD)
-        if self.data is not None:
-            props = self._apply_pending(dict(self.data.get("properties") or {}))
-            if "OutputSetPoint" in props:
-                props = self._inject_boost(props)
-            self.data = {**self.data, "properties": props}
-            self.async_update_listeners()
+        """Show a value straight away, until the unit confirms it or the hold runs out."""
+        self._pending[key] = (value, time.monotonic() + PENDING_HOLD)
+        self._publish()
+        self._expire_later()
 
     def forget_pending(self, *keys: str) -> None:
         """Stop holding values that a new change makes out of date."""
         for key in keys:
             self._pending.pop(key, None)
-
-    def _apply_pending(self, props: dict[str, Any]) -> dict[str, Any]:
-        """Keep showing values written from HA until the device reports a newer one.
-
-        Without this, a check that started just before a change can finish just
-        after it and briefly put the old value back (a mode "bouncing back").
-        """
-        if not self._pending:
-            return props
-        now = time.monotonic()
-        props = dict(props)
-        for key, (value, written_ms, give_up) in list(self._pending.items()):
-            reported_ms = int((props.get(key) or {}).get("timestamp") or 0)
-            if now > give_up or reported_ms >= written_ms:
-                del self._pending[key]
-                continue
-            item = {**(props.get(key) or {}), "property": key, "value": value}
-            if isinstance(value, (int, float)):
-                item["numberValue"] = value
-            props[key] = item
-        return props
 
     async def _apply_recent_writes(self, props: dict[str, Any]) -> dict[str, Any]:
         """Use the newest written value for settings the device doesn't echo back."""
@@ -327,21 +386,17 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.update_interval = self._normal_interval
 
     async def async_set_socket(self, socket: str, mode: str) -> None:
-        """Write a socket mode, update optimistically, then confirm shortly after."""
+        """Show the new socket mode at once, send it, and hold it until the hub confirms."""
+        socket, mode = socket.upper(), mode.upper()
+        self._socket_hold[socket] = (mode, time.monotonic() + PENDING_HOLD)
+        self._publish()
         try:
             await self.client.async_set_socket(socket, mode)
         except (PoolIQConnectionError, PoolIQAuthError, ValueError) as err:
+            self._socket_hold.pop(socket, None)
+            self._publish()
             raise HomeAssistantError(f"Pool IQ: could not set {socket} to {mode}: {err}") from err
-
-        cur = self._sockets.get(socket) or {"ts": 0, "fields": {}}
-        fields = dict(cur["fields"])
-        fields["SW"] = mode
-        # Use the current time so stale in-flight reports (which carry an
-        # older timestamp) cannot overwrite this optimistic state.
-        self._sockets[socket] = {"ts": int(time.time() * 1000), "fields": fields}
-        self._save_cache()
-        if self.data is not None:
-            self.async_set_updated_data({**self.data, "sockets": dict(self._sockets)})
+        self._expire_later()
         self._schedule_confirm()
 
     @callback
@@ -365,23 +420,19 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         `show` holds extra values to display straight away (e.g. the work mode a
         write will cause), until the device's own report replaces them.
         """
+        held = {**values, **(show or {})}
+        give_up = time.monotonic() + PENDING_HOLD
+        for key, value in held.items():
+            self._pending[key] = (value, give_up)
+        self._publish()  # show it before the cloud answers
         try:
             await self.client.async_write_properties(values)
         except (PoolIQConnectionError, PoolIQAuthError) as err:
+            for key in held:
+                self._pending.pop(key, None)
+            self._publish()
             raise HomeAssistantError(f"Pool IQ: could not set {values}: {err}") from err
-
-        written_ms = int(time.time() * 1000)
-        for key, value in {**values, **(show or {})}.items():
-            self._pending[key] = (value, written_ms, time.monotonic() + PENDING_HOLD)
-        if self.data is not None:
-            props = dict(self.data.get("properties") or {})
-            for key, value in {**values, **(show or {})}.items():
-                item = dict(props.get(key) or {"property": key})
-                item["value"] = value
-                if isinstance(value, (int, float)):
-                    item["numberValue"] = value
-                props[key] = item
-            self.async_set_updated_data({**self.data, "properties": props})
+        self._expire_later()
         self._schedule_confirm()
 
     async def async_invoke(
@@ -426,6 +477,7 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if kind == "REPORT_PROPERTY":
             for key, value in (payload.get("properties") or {}).items():
                 if str(key).upper() in SOCKET_KEYS and isinstance(value, str):
+                    # Reported state only; a change from HA is held separately.
                     sock_key = str(key).upper()
                     cur = self._sockets.get(sock_key)
                     if cur is None or ts >= cur["ts"]:
@@ -459,20 +511,15 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not updates and not sockets_changed:
             return
 
-        props = dict(self.data.get("properties") or {})
+        raw = dict(self._raw)
         for key, value in updates.items():
-            item = {**(props.get(key) or {}), "property": key, "value": value, "timestamp": ts}
+            item = {**(raw.get(key) or {}), "property": key, "value": value, "timestamp": ts}
             if isinstance(value, (int, float)):
                 item["numberValue"] = value
             else:
                 item.pop("numberValue", None)
-            props[key] = item
-        props = self._apply_pending(props)
-        if "OutputSetPoint" in props:
-            props = self._inject_boost(props)
+            raw[key] = item
+        self._raw = raw
         if sockets_changed:
             self._save_cache()
-        self._pick_interval(props)
-        # Update listeners without postponing the safety-net poll.
-        self.data = {**self.data, "properties": props, "sockets": dict(self._sockets)}
-        self.async_update_listeners()
+        self._publish()

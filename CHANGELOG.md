@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.11
+
+- **Changes made in Home Assistant can no longer bounce back or show a false state.** A change now shows the instant you tap it, before the cloud answers, and is held until the unit reports that same value. A stale report arriving in the meantime is ignored. If the unit hasn't confirmed within 20 seconds, Home Assistant shows what the unit actually reported, so a command that didn't take effect can't stay on screen. If the cloud rejects a command, the control goes straight back and an error is shown.
+- This compares values rather than timestamps, so it works even if the Home Assistant and Pool IQ cloud clocks differ. Replaces the 0.4.10 approach, and now covers every control: sockets, power, mode, output, pH dosing and boost.
+
 ## 0.4.10
 
 - **Fix switch bounce-back on mobile.** After tapping a pump or light switch, the UI could briefly flip back to off before settling on the correct state. A stale report already in the WebSocket pipeline was overwriting the optimistic update. The push path now rejects messages older than the last command, matching the guard polling already had.
