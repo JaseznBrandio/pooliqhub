@@ -336,8 +336,9 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cur = self._sockets.get(socket) or {"ts": 0, "fields": {}}
         fields = dict(cur["fields"])
         fields["SW"] = mode
-        # Keep the old timestamp so the hub's (newer) confirmation replaces this.
-        self._sockets[socket] = {"ts": cur["ts"], "fields": fields}
+        # Use the current time so stale in-flight reports (which carry an
+        # older timestamp) cannot overwrite this optimistic state.
+        self._sockets[socket] = {"ts": int(time.time() * 1000), "fields": fields}
         self._save_cache()
         if self.data is not None:
             self.async_set_updated_data({**self.data, "sockets": dict(self._sockets)})
@@ -425,8 +426,11 @@ class PoolIQCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if kind == "REPORT_PROPERTY":
             for key, value in (payload.get("properties") or {}).items():
                 if str(key).upper() in SOCKET_KEYS and isinstance(value, str):
-                    self._sockets[str(key).upper()] = {"ts": ts, "fields": dict(parse_qsl(value))}
-                    sockets_changed = True
+                    sock_key = str(key).upper()
+                    cur = self._sockets.get(sock_key)
+                    if cur is None or ts >= cur["ts"]:
+                        self._sockets[sock_key] = {"ts": ts, "fields": dict(parse_qsl(value))}
+                        sockets_changed = True
                 else:
                     updates[key] = value
         elif kind == "WRITE_PROPERTY":
