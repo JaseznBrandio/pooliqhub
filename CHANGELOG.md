@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.10
+
+- **Fix switch bounce-back on mobile.** After tapping a pump or light switch, the UI could briefly flip back to off before settling on the correct state. A stale report already in the WebSocket pipeline was overwriting the optimistic update. The push path now rejects messages older than the last command, matching the guard polling already had.
+
 ## 0.4.9
 
 - **Status shows every fault in plain words**, using the Pool IQ Hub fault table: high salt, low salt, extremely high salt, low flow, no output, low output, internal temp high, transformer temp high, water temp high, water temp low, water temp rising fast and check ioniser rods. When several faults happen at once they're all listed, for example "Low salt, Water temp low".
